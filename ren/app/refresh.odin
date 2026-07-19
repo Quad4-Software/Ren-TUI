@@ -81,10 +81,18 @@ refresh_network_list_if_needed :: proc(a: ^App) {
 // Always rebuild Network list. Use when returning from Page so peer idxs match
 // directory after announces / hot-cap eviction while away.
 show_network_tab :: proc(a: ^App) {
-	a.tab = .Network
+	switch_tab(a, .Network)
 	refresh_network_list(a, a.net_list.selected, a.net_list.scroll)
 	a.net_dir_rev = a.directory.revision
 	a.net_filter_applied = a.net_filter_tick
+}
+
+switch_tab :: proc(a: ^App, tab: Tab) {
+	if a.tab != tab {
+		ui.loop_request_full_redraw(&a.loop)
+	}
+	a.tab = tab
+	mark_dirty(a)
 }
 
 network_list_visible :: proc(a: ^App) -> int {

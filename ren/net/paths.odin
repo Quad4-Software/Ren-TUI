@@ -91,8 +91,8 @@ path_hot_invalidate :: proc(pf: ^Path_Finder, dest: [store.HASH_LEN]u8) {
 }
 
 path_table_lookup :: proc(node: rns.Node, dest: [store.HASH_LEN]u8) -> (hops: u8, ok: bool) {
-	entries: [64]rns.Path_Entry
-	n, err := rns.path_table(node, entries[:])
+	entries := make([]rns.Path_Entry, constants.PATH_TABLE_CAP, context.temp_allocator)
+	n, err := rns.path_table(node, entries)
 	if err != .Ok || n == 0 {
 		return 0, false
 	}

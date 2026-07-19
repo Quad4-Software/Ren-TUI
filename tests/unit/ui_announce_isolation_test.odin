@@ -124,6 +124,46 @@ test_network_list_rebuild_after_hot_cap_while_away :: proc(t: ^testing.T) {
 	testing.expect(t, visible > 1)
 }
 
+@(test)
+test_page_status_omits_announce_stats :: proc(t: ^testing.T) {
+	a: app.App
+	a.tab = .Page
+	a.online = true
+	a.session.announces = 42
+	a.session.status = "online"
+	store.directory_init(&a.directory)
+	defer store.directory_destroy(&a.directory)
+	h: [store.HASH_LEN]u8
+	h[0] = 1
+	store.directory_upsert(&a.directory, h, h, .Nomad_Node, "ghost-node", nil, 1)
+	testing.expect(t, app.page_status_omits_announce_stats(&a))
+	testing.expect(t, !contains_ascii_substr(a.status_right, "hot:"))
+	testing.expect(t, !contains_ascii_substr(a.status_right, "ann:"))
+
+	a.tab = .Network
+	testing.expect(t, !app.page_status_omits_announce_stats(&a))
+	testing.expect(t, contains_ascii_substr(a.status_right, "hot:"))
+}
+
+contains_ascii_substr :: proc(s, sub: string) -> bool {
+	if len(sub) == 0 {
+		return true
+	}
+	for i in 0 ..= len(s) - len(sub) {
+		match := true
+		for j in 0 ..< len(sub) {
+			if s[i + j] != sub[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return true
+		}
+	}
+	return false
+}
+
 contains_byte :: proc(s: string, b: u8) -> bool {
 	for i in 0 ..< len(s) {
 		if s[i] == b {

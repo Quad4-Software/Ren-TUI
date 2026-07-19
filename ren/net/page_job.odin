@@ -39,9 +39,10 @@ Page_Job :: struct {
 	has_request_id: bool,
 	deadline:       time.Tick,
 	phase_deadline: time.Tick,
-	retry_at:       time.Tick,
-	path_retried:   bool,
-	identify_after: bool,
+	retry_at:         time.Tick,
+	path_refreshed:   bool,
+	link_rediscover:  bool,
+	identify_after:   bool,
 	content:        []u8,
 	status:         string,
 }
@@ -354,9 +355,9 @@ session_page_tick :: proc(s: ^Session) {
 			return
 		}
 		if time.tick_diff(now, s.page.retry_at) <= 0 {
-			if !s.page.path_retried {
+			if !s.page.path_refreshed {
 				path_request_refresh(s, s.page.node)
-				s.page.path_retried = true
+				s.page.path_refreshed = true
 				page_set_status(s, fmt.tprintf("refreshing path for %s...", node_hash_hex(s.page.node)))
 			} else {
 				dh := s.page.node
@@ -370,8 +371,9 @@ session_page_tick :: proc(s: ^Session) {
 		link, lerr := rns.link_open(s.node, dh[:])
 		if lerr != .Ok || link == 0 {
 			path_hot_invalidate(&s.paths, s.page.node)
-			if !s.page.path_retried {
-				s.page.path_retried = true
+			if !s.page.link_rediscover {
+				s.page.link_rediscover = true
+				s.page.path_refreshed = false
 				s.page.phase = .Finding_Path
 				s.page.phase_deadline = time.tick_add(
 					now,
@@ -398,8 +400,9 @@ session_page_tick :: proc(s: ^Session) {
 	case .Waiting_Link:
 		if time.tick_diff(now, s.page.phase_deadline) <= 0 {
 			path_hot_invalidate(&s.paths, s.page.node)
-			if !s.page.path_retried {
-				s.page.path_retried = true
+			if !s.page.link_rediscover {
+				s.page.link_rediscover = true
+				s.page.path_refreshed = false
 				if s.page.link != 0 {
 					_ = rns.link_close(s.page.link)
 					s.page.link = 0

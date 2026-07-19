@@ -5,6 +5,10 @@ Do not rely on it for sensitive messaging. Use at your own risk.
 
 Ren TUI is a terminal LXMF client for [Reticulum](https://reticulum.network/) built with Odin on librns (Reticulum-Go). It aims for NomadNet-like messaging/browsing without urwid or ncurses.
 
+rngit: `git clone rns://06a54b505bb67b25ef3f8097e8001edc/public/ren-tui`
+
+Reticulum-Go: dev branch
+
 ## Design
 
 Custom TUI, not a curses wrapper. Raw terminal I/O, cell buffer, and a small widget set.
@@ -15,7 +19,7 @@ Tabs:
 |-----|------|
 | Conversations | Message threads (persisted under `~/.config/ren-tui/conversations/`) |
 | Network | Peers grouped LXMF / NomadNet / Propagation (announce stream) |
-| Page | Full-screen NomadNet micron viewer (isolated from announces) |
+| Page | Full-screen NomadNet micron viewer |
 | Interfaces | Sorted interface cards with status |
 | Compose | Send to an LXMF address |
 | Config | Name, announce, color mode, theme, restart, addresses |
@@ -287,6 +291,4 @@ Forks change pins in `.github/ci.env`. Actions are pinned to full commit SHAs.
 
 ## License
 
-0BSD. Copyright (c) 2026 Quad4.
-
-See [LICENSE](LICENSE). Provided as-is, without warranty of any kind.
+0BSD [LICENSE](LICENSE).
