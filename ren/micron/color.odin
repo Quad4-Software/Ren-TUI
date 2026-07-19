@@ -10,7 +10,9 @@ package micron
 import "core:math"
 import "core:strconv"
 
-import "ren:ui"
+Rgb :: struct {
+	r, g, b: u8,
+}
 
 is_hex_byte :: proc(b: u8) -> bool {
 	return (b >= '0' && b <= '9') || (b >= 'a' && b <= 'f') || (b >= 'A' && b <= 'F')
@@ -62,22 +64,22 @@ hex_nibble :: proc(b: u8) -> u8 {
 	return 0
 }
 
-expand_hex3 :: proc(s: string) -> ui.Color {
+expand_hex3 :: proc(s: string) -> Rgb {
 	r := hex_nibble(s[0])
 	g := hex_nibble(s[1])
 	b := hex_nibble(s[2])
-	return ui.Color{r = r * 17, g = g * 17, b = b * 17}
+	return Rgb{r = r * 17, g = g * 17, b = b * 17}
 }
 
-parse_hex6 :: proc(s: string) -> ui.Color {
-	return ui.Color{
+parse_hex6 :: proc(s: string) -> Rgb {
+	return Rgb{
 		r = hex_nibble(s[0]) << 4 | hex_nibble(s[1]),
 		g = hex_nibble(s[2]) << 4 | hex_nibble(s[3]),
 		b = hex_nibble(s[4]) << 4 | hex_nibble(s[5]),
 	}
 }
 
-color_to_rgb :: proc(c: string, fallback: ui.Color) -> ui.Color {
+color_to_rgb :: proc(c: string, fallback: Rgb) -> Rgb {
 	if !micron_color_token(c) {
 		return fallback
 	}
@@ -96,7 +98,7 @@ color_to_rgb :: proc(c: string, fallback: ui.Color) -> ui.Color {
 			v = 99
 		}
 		h := u8(math.floor(f64(v) * 2.55))
-		return ui.Color{r = h, g = h, b = h}
+		return Rgb{r = h, g = h, b = h}
 	}
 	return fallback
 }

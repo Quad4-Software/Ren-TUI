@@ -13,11 +13,20 @@ Loop :: struct {
 	buf:    Buffer,
 	quit:   bool,
 	status: string,
+	theme:  Theme,
+	caps:   Caps,
 }
 
 loop_init :: proc(l: ^Loop, preferred_color := "", enable_mouse := true) -> bool {
 	l^ = {}
+	l.theme = FIELD
+	loop_activate(l)
+	caps_init(preferred_color)
+	if !enable_mouse {
+		caps_ptr().mouse = false
+	}
 	if !term_init(&l.term, preferred_color, enable_mouse) {
+		loop_deactivate(l)
 		return false
 	}
 	l.buf = buffer_create(l.term.width, l.term.height)
@@ -27,6 +36,7 @@ loop_init :: proc(l: ^Loop, preferred_color := "", enable_mouse := true) -> bool
 loop_close :: proc(l: ^Loop) {
 	buffer_destroy(&l.buf)
 	term_close(&l.term)
+	loop_deactivate(l)
 }
 
 Draw_Proc :: #type proc(buf: ^Buffer, user: rawptr)
@@ -34,6 +44,7 @@ Event_Proc :: #type proc(ev: Event, user: rawptr) -> bool
 Dirty_Proc :: #type proc(user: rawptr) -> bool
 
 loop_run :: proc(l: ^Loop, draw: Draw_Proc, on_event: Event_Proc, user: rawptr, is_dirty: Dirty_Proc = nil) {
+	loop_activate(l)
 	force := true
 	for !l.quit {
 		term_query_size(&l.term)
@@ -46,7 +57,7 @@ loop_run :: proc(l: ^Loop, draw: Draw_Proc, on_event: Event_Proc, user: rawptr, 
 			dirty = is_dirty(user)
 		}
 		if dirty {
-			t := theme()
+			t := l.theme
 			buffer_clear(&l.buf, t.bg, t.fg)
 			if draw != nil {
 				draw(&l.buf, user)

@@ -71,8 +71,8 @@ test_bug_no_color_honored_on_linux_term :: proc(t: ^testing.T) {
 		os.unset_env("TERM")
 	}
 	ui.caps_init("")
-	testing.expect_value(t, ui.caps.mode, ui.Color_Mode.None)
-	testing.expect_value(t, ui.caps.name, "nocolor")
+	testing.expect_value(t, ui.caps_get().mode, ui.Color_Mode.None)
+	testing.expect_value(t, ui.caps_get().name, "nocolor")
 	ui.caps_init("full")
 }
 

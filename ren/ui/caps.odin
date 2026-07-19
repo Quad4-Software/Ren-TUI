@@ -3,6 +3,7 @@
 
 /*
 Terminal capability detection and forced UI modes.
+Caps live on Loop. Standalone tests use a package fallback.
 */
 
 package ui
@@ -28,10 +29,22 @@ Caps :: struct {
 	name:       string,
 }
 
-caps: Caps
+_standalone_caps: Caps
+
+caps_ptr :: proc() -> ^Caps {
+	if _active != nil {
+		return &_active.caps
+	}
+	return &_standalone_caps
+}
+
+caps_get :: proc() -> Caps {
+	return caps_ptr()^
+}
 
 caps_init :: proc(preferred := "") {
-	caps = Caps{
+	c := caps_ptr()
+	c^ = Caps{
 		mode = .Truecolor,
 		ascii = false,
 		alt_screen = true,
@@ -46,15 +59,15 @@ caps_init :: proc(preferred := "") {
 	}
 	switch force {
 	case "full", "modern", "truecolor", "24":
-		caps.name = "full"
-		caps.mode = .Truecolor
+		c.name = "full"
+		c.mode = .Truecolor
 		return
 	case "256", "ansi256":
-		caps.mode = .Ansi256
-		caps.ascii = false
-		caps.alt_screen = true
-		caps.cursor_ctl = true
-		caps.name = "256"
+		c.mode = .Ansi256
+		c.ascii = false
+		c.alt_screen = true
+		c.cursor_ctl = true
+		c.name = "256"
 		return
 	case "compat", "basic", "16":
 		apply_compat()
@@ -65,10 +78,10 @@ caps_init :: proc(preferred := "") {
 	}
 
 	if os.get_env("NO_COLOR", context.temp_allocator) != "" {
-		caps.mode = .None
-		caps.ascii = true
-		caps.mouse = false
-		caps.name = "nocolor"
+		c.mode = .None
+		c.ascii = true
+		c.mouse = false
+		c.name = "nocolor"
 		return
 	}
 
@@ -82,22 +95,22 @@ caps_init :: proc(preferred := "") {
 	}
 
 	if !utf8 {
-		caps.ascii = true
+		c.ascii = true
 	}
 
 	if strings.contains(term, "linux") {
-		caps.mode = .Ansi16
-		caps.ascii = true
-		caps.alt_screen = false
-		caps.cursor_ctl = true
-		caps.name = "compat"
+		c.mode = .Ansi16
+		c.ascii = true
+		c.alt_screen = false
+		c.cursor_ctl = true
+		c.name = "compat"
 		return
 	}
 
 	if strings.contains(term, "vt100") || strings.contains(term, "vt102") {
 		apply_compat()
-		caps.alt_screen = false
-		caps.mouse = false
+		c.alt_screen = false
+		c.mouse = false
 		return
 	}
 
@@ -106,51 +119,52 @@ caps_init :: proc(preferred := "") {
 		strings.contains(term, "alacritty") || strings.contains(term, "kitty") ||
 		strings.contains(term, "foot") || strings.contains(term, "wezterm")
 
-	if truecolor && caps.mode != .None {
-		caps.mode = .Truecolor
-		caps.name = "full" if !caps.ascii else "compat"
+	if truecolor && c.mode != .None {
+		c.mode = .Truecolor
+		c.name = "full" if !c.ascii else "compat"
 		return
 	}
 
 	if strings.contains(term, "256color") || strings.contains(term, "xterm") ||
 	   strings.contains(term, "screen") || strings.contains(term, "tmux") ||
 	   strings.contains(term, "rxvt") {
-		if caps.mode == .None {
-			caps.name = "nocolor"
+		if c.mode == .None {
+			c.name = "nocolor"
 			return
 		}
-		// NomadNet default target: UTF-8 + at least 256 colors
-		caps.mode = .Ansi256
-		caps.name = "256"
+		c.mode = .Ansi256
+		c.name = "256"
 		return
 	}
 
-	if caps.mode == .None {
-		caps.name = "nocolor"
+	if c.mode == .None {
+		c.name = "nocolor"
 		return
 	}
-	caps.mode = .Ansi16
-	caps.ascii = true
-	caps.name = "compat"
+	c.mode = .Ansi16
+	c.ascii = true
+	c.name = "compat"
 }
 
 @(private)
 apply_compat :: proc() {
-	caps.mode = .Ansi16
-	caps.ascii = true
-	caps.alt_screen = true
-	caps.cursor_ctl = true
-	caps.name = "compat"
+	c := caps_ptr()
+	c.mode = .Ansi16
+	c.ascii = true
+	c.alt_screen = true
+	c.cursor_ctl = true
+	c.name = "compat"
 }
 
 @(private)
 apply_dumb :: proc() {
-	caps.mode = .None
-	caps.ascii = true
-	caps.alt_screen = false
-	caps.cursor_ctl = false
-	caps.mouse = false
-	caps.name = "dumb"
+	c := caps_ptr()
+	c.mode = .None
+	c.ascii = true
+	c.alt_screen = false
+	c.cursor_ctl = false
+	c.mouse = false
+	c.name = "dumb"
 }
 
 color_to_ansi256 :: proc(c: Color) -> int {
@@ -181,14 +195,14 @@ locale_is_utf8 :: proc() -> bool {
 }
 
 caps_border :: proc() -> (tl, tr, bl, br, h, v: rune) {
-	if caps.ascii {
+	if caps_ptr().ascii {
 		return '+', '+', '+', '+', '-', '|'
 	}
 	return '┌', '┐', '└', '┘', '─', '│'
 }
 
 caps_cursor_glyph :: proc() -> rune {
-	if caps.ascii {
+	if caps_ptr().ascii {
 		return '_'
 	}
 	return '▌'
@@ -215,11 +229,10 @@ color_to_ansi16 :: proc(c: Color) -> int {
 }
 
 sanitize_rune :: proc(ch: rune) -> rune {
-	// Never emit C0, DEL, or C1 controls into the terminal stream.
 	if ch < 0x20 || ch == 0x7f || (ch >= 0x80 && ch <= 0x9f) {
 		return ' '
 	}
-	if !caps.ascii {
+	if !caps_ptr().ascii {
 		return ch
 	}
 	switch ch {

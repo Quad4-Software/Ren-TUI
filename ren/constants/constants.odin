@@ -25,6 +25,9 @@ RNS_LOCAL_DIR :: "rns"
 PEERS_HOT_MAX :: 256
 PEERS_SPILL_MAX :: 2048
 
+// On-disk conversation msgpack schema version
+CONVERSATIONS_SCHEMA_VERSION :: 1
+
 // Defaults
 DEFAULT_DISPLAY_NAME :: "Anonymous"
 DEFAULT_COLOR_MODE :: "auto"

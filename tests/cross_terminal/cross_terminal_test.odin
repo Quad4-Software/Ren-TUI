@@ -28,9 +28,9 @@ test_cross_terminal_forced_modes :: proc(t: ^testing.T) {
 	}
 	for c in cases {
 		ui.caps_init(c.force)
-		testing.expect_value(t, ui.caps.name, c.want_name)
-		testing.expect_value(t, ui.caps.mode, c.want_mode)
-		testing.expect_value(t, ui.caps.ascii, c.want_ascii)
+		testing.expect_value(t, ui.caps_get().name, c.want_name)
+		testing.expect_value(t, ui.caps_get().mode, c.want_mode)
+		testing.expect_value(t, ui.caps_get().ascii, c.want_ascii)
 	}
 	ui.caps_init("full")
 }

@@ -10,7 +10,6 @@ package app
 import "core:fmt"
 import "core:strings"
 
-import rns "rns:rns"
 import "ren:net"
 import "ren:store"
 import "ren:ui"
@@ -208,26 +207,28 @@ truncate_runes_local :: proc(s: string, max_cols: int) -> string {
 }
 
 refresh_iface_cache :: proc(a: ^App) {
-	entries: [64]rns.Interface_Entry
-	n := net.session_interfaces(&a.session, entries[:])
+	infos: [64]net.Iface_Info
+	n := net.session_list_ifaces(&a.session, infos[:])
 	seen := make(map[string]bool, context.temp_allocator)
 	for i in 0 ..< n {
-		e := entries[i]
-		name := strings.clone(rns.interface_name(&e), context.temp_allocator)
-		typ := friendly_iface_type(rns.interface_type(&e), name)
-		seen[name] = true
+		e := infos[i]
+		defer {
+			delete(e.name)
+			delete(e.type_n)
+		}
+		seen[e.name] = true
 		found := false
 		for &iface in a.ifaces {
-			if iface.name == name {
-				iface.online = e.online != 0
-				iface.enabled = e.enabled != 0
-				iface.rx = e.rx_bytes
-				iface.tx = e.tx_bytes
+			if iface.name == e.name {
+				iface.online = e.online
+				iface.enabled = e.enabled
+				iface.rx = e.rx
+				iface.tx = e.tx
 				iface.rx_packets = e.rx_packets
 				iface.tx_packets = e.tx_packets
-				if iface.type_n != typ {
+				if iface.type_n != e.type_n {
 					delete(iface.type_n)
-					iface.type_n = strings.clone(typ)
+					iface.type_n = strings.clone(e.type_n)
 				}
 				found = true
 				break
@@ -235,12 +236,12 @@ refresh_iface_cache :: proc(a: ^App) {
 		}
 		if !found {
 			append(&a.ifaces, Iface_View{
-				name = strings.clone(name),
-				type_n = strings.clone(typ),
-				online = e.online != 0,
-				enabled = e.enabled != 0,
-				rx = e.rx_bytes,
-				tx = e.tx_bytes,
+				name = strings.clone(e.name),
+				type_n = strings.clone(e.type_n),
+				online = e.online,
+				enabled = e.enabled,
+				rx = e.rx,
+				tx = e.tx,
 				rx_packets = e.rx_packets,
 				tx_packets = e.tx_packets,
 			})
@@ -254,33 +255,6 @@ refresh_iface_cache :: proc(a: ^App) {
 		}
 	}
 	sort_ifaces(&a.ifaces)
-}
-
-friendly_iface_type :: proc(typ, name: string) -> string {
-	t := strings.to_lower(typ, context.temp_allocator)
-	n := strings.to_lower(name, context.temp_allocator)
-	switch {
-	case strings.contains(t, "tcp") || strings.contains(n, "tcp"):
-		return "TCP"
-	case strings.contains(t, "udp"):
-		return "UDP"
-	case strings.contains(t, "unix") || strings.contains(t, "backbone") || strings.contains(n, "backbone"):
-		return "Backbone (unix)"
-	case strings.contains(t, "auto") || strings.contains(n, "auto"):
-		return "Auto"
-	case strings.contains(t, "i2p"):
-		return "I2P"
-	case strings.contains(t, "quic"):
-		return "QUIC"
-	case strings.contains(t, "https"):
-		return "HTTPS"
-	case strings.contains(t, "dns"):
-		return "DNS"
-	}
-	if typ != "" {
-		return typ
-	}
-	return "Interface"
 }
 
 sort_ifaces :: proc(ifaces: ^[dynamic]Iface_View) {

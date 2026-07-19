@@ -87,7 +87,11 @@ Ren does **not** use a third-party msgpack library or Python LXMF bindings at ru
 
 **Conversations on disk:** per-peer msgpack under `~/.config/ren-tui/conversations/<peerhex>/messages.msgpack` (atomic `.tmp` + rename), using the same writer/reader.
 
-Interop with Python RNS/LXMF is checked in `tests/interop/` (optional if those packages are installed).
+Schema version `CONVERSATIONS_SCHEMA_VERSION` (currently 1) is the first array element on write. Readers still accept the older 4-element layout without a version field.
+
+Supported msgpack subset for wire and storage: nil, bool, int, uint, float, bin, str, array, map, with explicit depth and size caps in `ren/lxmf/msgpack.odin`.
+
+Interop with Python RNS/LXMF is checked in `tests/interop/` (optional if those packages are installed). Covers opportunistic and direct packed shapes, stamp presence, and an announce app-data fixture.
 
 ### Theme and colors
 

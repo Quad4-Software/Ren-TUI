@@ -144,7 +144,18 @@ MONO :: Theme{
 THEME_PRESETS := [?]Theme{FIELD, SLATE, AMBER, MONO}
 THEME_NAMES := [?]string{"field", "slate", "amber", "mono"}
 
-current_theme := FIELD
+_active: ^Loop
+_standalone_theme := FIELD
+
+loop_activate :: proc(l: ^Loop) {
+	_active = l
+}
+
+loop_deactivate :: proc(l: ^Loop) {
+	if _active == l {
+		_active = nil
+	}
+}
 
 theme_presets :: proc() -> []Theme {
 	return THEME_PRESETS[:]
@@ -165,11 +176,18 @@ theme_by_name :: proc(name: string) -> Theme {
 }
 
 set_theme :: proc(t: Theme) {
-	current_theme = t
+	if _active != nil {
+		_active.theme = t
+		return
+	}
+	_standalone_theme = t
 }
 
 theme :: proc() -> Theme {
-	return current_theme
+	if _active != nil {
+		return _active.theme
+	}
+	return _standalone_theme
 }
 
 parse_hex_color :: proc(s: string) -> (Color, bool) {

@@ -171,7 +171,7 @@ test-mutation: git-commit $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/mutation $(ODIN_TEST_FLAGS)
 
 test-race: git-commit $(BIN_LIBRNS)
-	$(ODIN_TEST_ENV) $(ODIN) test tests/race $(ODIN_TEST_SERIAL_FLAGS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/race $(ODIN_TEST_FLAGS)
 
 test-chaos: git-commit $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/chaos $(ODIN_TEST_SERIAL_FLAGS)

@@ -33,6 +33,42 @@ test_theme_hex_and_presets :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_store_theme_overrides_roundtrip :: proc(t: ^testing.T) {
+	ov: store.Theme_Overrides
+	defer store.theme_overrides_destroy(&ov)
+	store.theme_overrides_set(&ov, "accent", "#112233")
+	store.theme_overrides_set(&ov, "bg", "#010203")
+	testing.expect(t, store.theme_overrides_has_any(ov))
+	testing.expect_value(t, ov.accent, "#112233")
+	testing.expect_value(t, ov.bg, "#010203")
+
+	cfg := store.config_default()
+	defer store.config_destroy_strings(&cfg)
+	store.theme_overrides_set(&cfg.theme_overrides, "title", "#abcdef")
+	ui.apply_theme_hex(cfg.theme_name, ui.Theme_Hex{title = cfg.theme_overrides.title})
+	th := ui.theme()
+	testing.expect_value(t, th.title.r, u8(0xab))
+	ui.set_theme(ui.FIELD)
+}
+
+@(test)
+test_dual_loop_themes_isolated :: proc(t: ^testing.T) {
+	a: ui.Loop
+	b: ui.Loop
+	a.theme = ui.AMBER
+	b.theme = ui.SLATE
+	ui.loop_activate(&a)
+	testing.expect_value(t, ui.theme().name, "amber")
+	ui.loop_activate(&b)
+	testing.expect_value(t, ui.theme().name, "slate")
+	ui.set_theme(ui.MONO)
+	testing.expect_value(t, b.theme.name, "mono")
+	testing.expect_value(t, a.theme.name, "amber")
+	ui.loop_deactivate(&b)
+	ui.set_theme(ui.FIELD)
+}
+
+@(test)
 test_clipboard_osc52_empty_rejected :: proc(t: ^testing.T) {
 	testing.expect(t, !ui.clipboard_copy(""))
 }

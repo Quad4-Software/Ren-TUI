@@ -15,16 +15,12 @@ import "ren:ui"
 
 on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 	a := cast(^App)user
-	prev_status := a.session.status
 	prev_ann := a.session.announces
 	net.session_poll(&a.session, &a.directory, &a.conversations, &a.cfg, a.cfg.auto_announce)
 	page_poll_result(a)
+	handle_session_events(a)
 	if a.session.announces > prev_ann {
 		set_status(a, fmt.tprintf("announced (#%d)", a.session.announces), STATUS_HOLD)
-		mark_dirty(a)
-	} else if a.session.status == "message received" && prev_status != "message received" {
-		set_status(a, "message received", STATUS_HOLD)
-		a.recv_count += 1
 		mark_dirty(a)
 	}
 	// Rebuild lists when directory changed while on Network (incl. while away then returned).
@@ -415,6 +411,31 @@ network_skip_header :: proc(a: ^App, direction, visible: int) {
 
 point_in_rect :: proc(x, y: int, r: ui.Rect) -> bool {
 	return x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h
+}
+
+handle_session_events :: proc(a: ^App) {
+	buf: [net.SESSION_EVENT_CAP]net.Session_Event
+	n := net.session_events_drain(&a.session, buf[:])
+	for i in 0 ..< n {
+		ev := buf[i]
+		defer delete(ev.detail)
+		switch ev.kind {
+		case .Message_Received:
+			set_status(a, ev.detail if ev.detail != "" else "message received", STATUS_HOLD)
+			a.recv_count += 1
+			mark_dirty(a)
+		case .Send_Ok:
+			set_status(a, ev.detail if ev.detail != "" else "sent", STATUS_HOLD)
+			refresh_conv_list(a)
+			mark_dirty(a)
+		case .Send_Failed, .Page_Ok, .Page_Failed, .Error, .Online, .Offline:
+			if ev.detail != "" {
+				set_status(a, ev.detail, STATUS_HOLD)
+				mark_dirty(a)
+			}
+		case .Announce, .None:
+		}
+	}
 }
 
 click_tab :: proc(a: ^App, x: int) {

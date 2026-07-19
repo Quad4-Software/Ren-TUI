@@ -28,7 +28,6 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	_ = store.config_ensure_dirs(&a.cfg)
 	store.config_load(&a.cfg)
 	store.config_write_defaults_if_missing(&a.cfg)
-	store.config_apply_theme(&a.cfg)
 
 	store.directory_init(&a.directory)
 	store.directory_bind_spill(&a.directory, &a.cfg)
@@ -61,6 +60,7 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 		ui.stderr_redirect_stop(&a.stderr_redir)
 		return false
 	}
+	config_apply_theme(&a.cfg)
 
 	ok := net.session_create(&a.session, &a.cfg, a.cfg.display_name)
 	if ok {

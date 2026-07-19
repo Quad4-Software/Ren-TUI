@@ -125,13 +125,13 @@ cycle_theme :: proc(a: ^App) {
 	next := names[(idx + 1) % len(names)]
 	delete(a.cfg.theme_name)
 	a.cfg.theme_name = strings.clone(next)
-	store.config_apply_theme(&a.cfg)
+	config_apply_theme(&a.cfg)
 	refresh_lists(a)
 }
 
 apply_runtime_config :: proc(a: ^App) {
 	net.session_set_display_name(&a.session, a.cfg.display_name)
 	net.session_set_announce_interval(&a.session, a.cfg.announce_interval_sec)
-	store.config_apply_theme(&a.cfg)
+	config_apply_theme(&a.cfg)
 	update_status(a)
 }
