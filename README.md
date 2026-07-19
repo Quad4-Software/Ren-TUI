@@ -318,7 +318,7 @@ Config `[client] download_dir` sets where Page `d` writes files. Empty means `~/
 
 Announce peers are hot-capped (256 in RAM). Overflow goes to `~/.config/ren-tui/peers.msgpack`. Network list rebuilds only on identity/name changes (not hops). TUI redraws only when dirty. Page stays isolated from the announce stream.
 
-On panic or a fatal signal, ren-tui prints a short crash banner (version, `TERM` / `COLORTERM`, hints). Build with `-debug` for stack frames.
+On panic or a fatal signal, ren-tui prints a short crash banner (version, `TERM` / `COLORTERM`, hints).
 
 ## Docker
 
