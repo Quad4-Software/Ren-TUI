@@ -223,6 +223,9 @@ term_present :: proc(t: ^Term, buf: ^Buffer) {
 		for x in 0 ..< buf.width {
 			idx := y * buf.width + x
 			cell := buf.cells[idx]
+			if cell.ch == CELL_WIDE_CONT {
+				continue
+			}
 			if use_diff {
 				prev := t.prev.cells[idx]
 				if cell.ch == prev.ch && cell.fg == prev.fg && cell.bg == prev.bg && cell.style == prev.style {
@@ -244,7 +247,8 @@ term_present :: proc(t: ^Term, buf: ^Buffer) {
 			}
 			ch := sanitize_rune(cell.ch)
 			strings.write_rune(&t.out, ch)
-			cursor_x = x + 1
+			w := max(1, rune_cols(ch))
+			cursor_x = x + w
 			cursor_y = y
 			if cursor_x >= buf.width {
 				cursor_x = 0
@@ -287,6 +291,9 @@ term_present_to_builder :: proc(t: ^Term, buf: ^Buffer, out: ^strings.Builder, w
 		for x in 0 ..< buf.width {
 			idx := y * buf.width + x
 			cell := buf.cells[idx]
+			if cell.ch == CELL_WIDE_CONT {
+				continue
+			}
 			if diff {
 				prev := t.prev.cells[idx]
 				if cell.ch == prev.ch && cell.fg == prev.fg && cell.bg == prev.bg && cell.style == prev.style {
@@ -306,8 +313,10 @@ term_present_to_builder :: proc(t: ^Term, buf: ^Buffer, out: ^strings.Builder, w
 				last_style = cell.style
 				sgr_valid = true
 			}
-			strings.write_rune(out, sanitize_rune(cell.ch))
-			cursor_x = x + 1
+			ch := sanitize_rune(cell.ch)
+			strings.write_rune(out, ch)
+			w := max(1, rune_cols(ch))
+			cursor_x = x + w
 			cursor_y = y
 			if cursor_x >= buf.width {
 				cursor_x = 0

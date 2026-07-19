@@ -1,5 +1,6 @@
 bin/
 !bin/.gitkeep
+*.bin
 *.o
 *.a
 !vendor/librns/lib-musl/librns.a
@@ -9,6 +10,7 @@ bin/
 out/
 dist/
 .deps/
+result
 
 # Ignore stray shared libs, keep the vendored ones
 *.so

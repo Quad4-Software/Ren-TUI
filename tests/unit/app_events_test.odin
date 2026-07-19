@@ -35,12 +35,17 @@ test_app_events_message_and_send :: proc(t: ^testing.T) {
 	peer[0] = 0x42
 	_ = store.conversations_get_or_create(&a.conversations, peer, "Peer")
 	app.refresh_conv_list(&a)
+	testing.expect_value(t, len(a.conv_list.items), 1)
 
-	net.session_event_push(&a.session, .Message_Received)
+	ui.list_clear(&a.conv_list)
+	testing.expect_value(t, len(a.conv_list.items), 0)
+
+	net.session_event_push(&a.session, .Message_Received, "from aabb")
 	app.handle_session_events(&a)
 	testing.expect_value(t, a.recv_count, 1)
 	testing.expect(t, a.ui_dirty)
 	testing.expect(t, a.status_hold_len > 0)
+	testing.expect_value(t, len(a.conv_list.items), 1)
 
 	a.ui_dirty = false
 	net.session_event_push(&a.session, .Send_Ok)

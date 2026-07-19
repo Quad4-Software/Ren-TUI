@@ -219,12 +219,16 @@ truncate_runes :: proc(s: string, max_cols: int) -> string {
 	if max_cols <= 0 {
 		return ""
 	}
-	n := 0
-	for _, i in s {
-		if n >= max_cols {
+	cols := 0
+	for r, i in s {
+		w := rune_cols(r)
+		if w <= 0 {
+			continue
+		}
+		if cols + w > max_cols {
 			return s[:i]
 		}
-		n += 1
+		cols += w
 	}
 	return s
 }
