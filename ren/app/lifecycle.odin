@@ -191,12 +191,12 @@ page_active_node :: proc(a: ^App) -> (node: [store.HASH_LEN]u8, ok: bool) {
 }
 
 page_node_hops :: proc(a: ^App, node: [store.HASH_LEN]u8) -> (hops: u8, ok: bool) {
-	if e, pok := net.path_hot_lookup(&a.session.paths, node); pok {
+	if e, pok := net.path_hot_lookup(&a.session.paths, node); pok && e.hops > 0 {
 		return e.hops, true
 	}
 	for p in a.directory.peers {
 		if p.hash == node {
-			if !p.hops_known {
+			if !p.hops_known || p.hops == 0 {
 				return 0, false
 			}
 			return p.hops, true

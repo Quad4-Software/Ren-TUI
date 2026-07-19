@@ -57,7 +57,10 @@ path_hot_remember :: proc(pf: ^Path_Finder, dest: [store.HASH_LEN]u8, hops: u8) 
 	for i in 0 ..< len(pf.hot) {
 		e := &pf.hot[i]
 		if e.valid && e.hash == dest {
-			e.hops = hops
+			// Do not clobber a real hop count with librns unset (0).
+			if hops > 0 {
+				e.hops = hops
+			}
 			e.expires = expires
 			e.used = now
 			return
@@ -86,7 +89,7 @@ path_hot_sync_directory :: proc(pf: ^Path_Finder, directory: ^store.Directory) {
 		return
 	}
 	for e in pf.hot {
-		if e.valid {
+		if e.valid && e.hops > 0 {
 			store.directory_apply_path_hops(directory, e.hash, e.hops)
 		}
 	}
@@ -134,8 +137,10 @@ path_ensure :: proc(s: ^Session, dest: [store.HASH_LEN]u8, request_if_missing: b
 	}
 	if e, ok := path_hot_lookup(&s.paths, dest); ok {
 		if hops2, tok := path_table_lookup(s.node, dest); tok {
-			e.hops = hops2
-			return true, hops2
+			if hops2 > 0 {
+				e.hops = hops2
+			}
+			return true, e.hops if e.hops > 0 else hops2
 		}
 		// Cache said hot but table lost it
 		path_hot_invalidate(&s.paths, dest)
