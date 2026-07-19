@@ -122,6 +122,8 @@ send_try_failover :: proc(s: ^Session, reason: string) -> bool {
 	s.send.has_link_id = false
 	s.send.path_retried = false
 	if !send_prepare_method(s, .Propagated) {
+		delete(s.send.wire)
+		s.send.wire = nil
 		return false
 	}
 	send_set_status(s, fmt.tprintf("failover to propagate (%s)", reason))
@@ -215,31 +217,24 @@ send_prepare_method :: proc(s: ^Session, method: lxmf.Method) -> bool {
 	}
 	defer lxmf.message_destroy(&msg)
 
-	delete(s.send.packed)
-	delete(s.send.wire)
-	s.send.packed = bytes_clone(msg.packed)
-	s.send.message_id = msg.message_id
-	s.send.timestamp = msg.timestamp
-	s.send.stamped = len(msg.stamp) > 0
-	s.send.method = method
-	s.send.wire = nil
-
+	link_target := s.send.dest
+	wire: []u8
 	switch method {
 	case .Direct:
-		s.send.link_target = s.send.dest
-		s.send.wire = bytes_clone(msg.packed)
+		link_target = s.send.dest
+		wire = bytes_clone(msg.packed)
 	case .Opportunistic:
-		s.send.link_target = s.send.dest
+		link_target = s.send.dest
 		plain := lxmf.opportunistic_plaintext(msg.packed)
 		if len(plain) == 0 {
 			return false
 		}
-		s.send.wire = bytes_clone(plain)
+		wire = bytes_clone(plain)
 	case .Propagated:
 		if s.send.cfg == nil || !s.send.cfg.has_propagation_node {
 			return false
 		}
-		s.send.link_target = s.send.cfg.propagation_node
+		link_target = s.send.cfg.propagation_node
 		plain := lxmf.opportunistic_plaintext(msg.packed)
 		if len(plain) == 0 {
 			return false
@@ -253,10 +248,20 @@ send_prepare_method :: proc(s: ^Session, method: lxmf.Method) -> bool {
 		if wrap == nil {
 			return false
 		}
-		s.send.wire = wrap
+		wire = wrap
 	case .Paper, .Unknown:
 		return false
 	}
+
+	delete(s.send.packed)
+	delete(s.send.wire)
+	s.send.packed = bytes_clone(msg.packed)
+	s.send.message_id = msg.message_id
+	s.send.timestamp = msg.timestamp
+	s.send.stamped = len(msg.stamp) > 0
+	s.send.method = method
+	s.send.link_target = link_target
+	s.send.wire = wire
 	return true
 }
 

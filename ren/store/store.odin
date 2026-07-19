@@ -340,12 +340,18 @@ config_clear_propagation_node :: proc(c: ^Config) {
 
 config_set_propagation_node_hex :: proc(c: ^Config, hex_str: string) {
 	s := strings.trim_space(hex_str)
-	if s == "" || s == "none" {
+	if s == "" {
+		config_clear_propagation_node(c)
+		return
+	}
+	low := strings.to_lower(s, context.temp_allocator)
+	if low == "none" {
 		config_clear_propagation_node(c)
 		return
 	}
 	hash, ok := lxmf.decode_hex32(s)
 	if !ok {
+		config_clear_propagation_node(c)
 		return
 	}
 	config_set_propagation_node(c, hash)

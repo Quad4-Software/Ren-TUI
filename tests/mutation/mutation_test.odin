@@ -84,3 +84,36 @@ test_mutation_identity_blob_wrong_size :: proc(t: ^testing.T) {
 	testing.expect(t, ok2)
 	testing.expect(t, mat.loaded)
 }
+
+@(test)
+test_mutation_propagation_wrap_truncation :: proc(t: ^testing.T) {
+	wrap := lxmf.pack_propagation_payload([]u8{1, 2}, []u8{9, 9})
+	testing.expect(t, wrap == nil)
+
+	packed := make([]u8, lxmf.HASH_LEN + 8)
+	defer delete(packed)
+	for i in 0 ..< len(packed) {
+		packed[i] = u8(i)
+	}
+	good := lxmf.pack_propagation_payload(packed, []u8{7, 8, 9})
+	testing.expect(t, good != nil)
+	defer delete(good)
+
+	mut := make([]u8, len(good))
+	defer delete(mut)
+	copy(mut, good)
+	mut[0] ~= 0xff
+	r: lxmf.Reader
+	lxmf.reader_init(&r, mut)
+	_, err := lxmf.decode_value(&r)
+	_ = err
+}
+
+@(test)
+test_mutation_parse_send_method_junk :: proc(t: ^testing.T) {
+	junk := []string{"", "nope", "DIRECT", "xxx", "999", "prop agate"}
+	for s in junk {
+		m := lxmf.parse_send_method(s)
+		testing.expect_value(t, m, lxmf.Method.Direct)
+	}
+}

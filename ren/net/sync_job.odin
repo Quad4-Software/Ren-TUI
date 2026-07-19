@@ -228,21 +228,21 @@ session_sync_on_event :: proc(s: ^Session, ev: ^rns.Event) -> bool {
 		sync_fail(s, "Link failed")
 		return true
 	case .Request_Response:
-		if s.sync.phase != .Requesting {
+		if s.sync.phase != .Requesting || !s.sync.has_request_id {
 			return false
 		}
 		rid := rns.event_request_id(ev)
-		if s.sync.has_request_id && !hashes_equal(rid, s.sync.request_id[:]) {
+		if !hashes_equal(rid, s.sync.request_id[:]) {
 			return false
 		}
 		sync_complete(s, "Sync complete")
 		return true
 	case .Request_Failed:
-		if s.sync.phase != .Requesting {
+		if s.sync.phase != .Requesting || !s.sync.has_request_id {
 			return false
 		}
 		rid := rns.event_request_id(ev)
-		if s.sync.has_request_id && !hashes_equal(rid, s.sync.request_id[:]) {
+		if !hashes_equal(rid, s.sync.request_id[:]) {
 			return false
 		}
 		err := rns.event_error_message(ev)

@@ -147,3 +147,112 @@ test_e2e_config_theme_apply_roundtrip :: proc(t: ^testing.T) {
 	testing.expect_value(t, th.accent.r, u8(0xaa))
 	ui.set_theme(ui.FIELD)
 }
+
+@(test)
+test_e2e_compose_shows_method :: proc(t: ^testing.T) {
+	ui.set_theme(ui.FIELD)
+	ui.caps_init("256")
+	a: app.App
+	ui.input_init(&a.compose_to)
+	defer ui.input_destroy(&a.compose_to)
+	ui.input_init(&a.compose_body)
+	defer ui.input_destroy(&a.compose_body)
+	a.compose_method = .Propagated
+
+	buf := ui.buffer_create(50, 12)
+	defer ui.buffer_destroy(&buf)
+	app.draw_compose(&a, &buf, ui.Rect{0, 0, 50, 12})
+
+	found := false
+	for cell in buf.cells {
+		if cell.ch == 'P' {
+			found = true
+			break
+		}
+	}
+	testing.expect(t, found)
+	_ = lxmf.method_label(a.compose_method)
+}
+
+@(test)
+test_e2e_network_propagation_panel :: proc(t: ^testing.T) {
+	ui.set_theme(ui.FIELD)
+	ui.caps_init("256")
+	a: app.App
+	a.cfg = store.config_default()
+	defer store.config_destroy_strings(&a.cfg)
+	store.directory_init(&a.directory)
+	defer store.directory_destroy(&a.directory)
+	ui.list_init(&a.net_list)
+	defer ui.list_destroy(&a.net_list)
+	ui.input_init(&a.net_search)
+	defer ui.input_destroy(&a.net_search)
+	a.net_view = .Propagation
+	a.term_w = 80
+	a.term_h = 24
+
+	pn: [store.HASH_LEN]u8
+	pn[0] = 0x10
+	store.config_set_propagation_node(&a.cfg, pn)
+	a.session.sync.state = .Complete
+	a.session.sync.last_result = strings.clone("Sync complete")
+	defer delete(a.session.sync.last_result)
+
+	buf := ui.buffer_create(80, 24)
+	defer ui.buffer_destroy(&buf)
+	app.draw_network(&a, &buf, ui.Rect{0, 0, 80, 24})
+
+	has_prop := false
+	has_sync := false
+	row := make([]u8, buf.width)
+	defer delete(row)
+	for y in 0 ..< buf.height {
+		n := 0
+		for x in 0 ..< buf.width {
+			c := buf.cells[y * buf.width + x].ch
+			if c > 0 && c < 128 {
+				row[n] = u8(c)
+				n += 1
+			}
+		}
+		line := string(row[:n])
+		if strings.contains(line, "Prop node") {
+			has_prop = true
+		}
+		if strings.contains(line, "Sync") {
+			has_sync = true
+		}
+	}
+	testing.expect(t, has_prop)
+	testing.expect(t, has_sync)
+}
+
+@(test)
+test_e2e_prop_config_roundtrip :: proc(t: ^testing.T) {
+	base, _ := filepath.join({"/tmp", "ren-tui-e2e-prop"})
+	_ = os.remove_all(base)
+	defer os.remove_all(base)
+	_ = os.make_directory_all(base)
+
+	cfg := store.config_default()
+	delete(cfg.data_dir)
+	delete(cfg.config_path)
+	cfg.data_dir = strings.clone(base)
+	cfg.config_path, _ = filepath.join({base, "config"})
+	pn: [store.HASH_LEN]u8
+	pn[3] = 0x3c
+	store.config_set_propagation_node(&cfg, pn)
+	cfg.send_method = .Opportunistic
+	testing.expect(t, store.config_save(&cfg))
+	defer store.config_destroy_strings(&cfg)
+
+	loaded := store.config_default()
+	delete(loaded.data_dir)
+	delete(loaded.config_path)
+	loaded.data_dir = strings.clone(base)
+	loaded.config_path, _ = filepath.join({base, "config"})
+	store.config_load(&loaded)
+	defer store.config_destroy_strings(&loaded)
+	testing.expect(t, loaded.has_propagation_node)
+	testing.expect_value(t, loaded.send_method, lxmf.Method.Opportunistic)
+}
