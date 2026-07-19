@@ -5,6 +5,8 @@ Do not rely on it for sensitive messaging. Use at your own risk.
 
 Ren TUI is a terminal LXMF client for [Reticulum](https://reticulum.network/) built with Odin on librns (Reticulum-Go). It aims for NomadNet-like messaging/browsing without urwid or ncurses.
 
+![Ren TUI](showcase/showcase.png)
+
 rngit: `git clone rns://06a54b505bb67b25ef3f8097e8001edc/public/ren-tui`
 
 Reticulum-Go: dev branch
