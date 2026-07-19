@@ -76,7 +76,7 @@ test_status_draw_truncates_right_to_budget :: proc(t: ^testing.T) {
 	ui.caps_init("full")
 	buf := ui.buffer_create(40, 1)
 	defer ui.buffer_destroy(&buf)
-	left := "ren-tui 0.1.0"
+	left := version.short_line(context.temp_allocator)
 	right := "waiting for path to 0123456789abcdef0123456789abcdef and more noise"
 	ui.draw_status(&buf, ui.Rect{0, 0, 40, 1}, left, right)
 	right_cols := ui.status_right_cols(40, strings.rune_count(left))
