@@ -9,11 +9,12 @@ Python packs msgpack [time, [dest_hash + encrypt(packed[DEST:])]].
 package lxmf
 
 import "core:bytes"
+import "core:strings"
 import "core:time"
 
 // Build the payload sent over a link to a propagation node.
 pack_propagation_payload :: proc(packed: []u8, encrypted_tail: []u8, allocator := context.allocator) -> []u8 {
-	if len(packed) < HASH_LEN {
+	if len(packed) < HASH_LEN || len(encrypted_tail) == 0 {
 		return nil
 	}
 	lxmf_data := make([]u8, HASH_LEN + len(encrypted_tail), context.temp_allocator)
@@ -66,7 +67,8 @@ cycle_send_method :: proc(m: Method) -> Method {
 }
 
 parse_send_method :: proc(val: string) -> Method {
-	switch val {
+	v := strings.to_lower(strings.trim_space(val), context.temp_allocator)
+	switch v {
 	case "opportunistic", "opp", "1":
 		return .Opportunistic
 	case "propagated", "propagate", "prop", "3":

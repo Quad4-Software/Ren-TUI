@@ -77,3 +77,40 @@ test_property_delivery_hash_stable :: proc(t: ^testing.T) {
 	b := lxmf.delivery_hash(mat.hash[:])
 	testing.expect(t, a == b)
 }
+
+@(test)
+test_property_send_method_roundtrip :: proc(t: ^testing.T) {
+	methods := []lxmf.Method{.Direct, .Opportunistic, .Propagated}
+	for m in methods {
+		got := lxmf.parse_send_method(lxmf.send_method_config_value(m))
+		testing.expect_value(t, got, m)
+	}
+	m := lxmf.Method.Direct
+	for _ in 0 ..< 3 {
+		m = lxmf.cycle_send_method(m)
+	}
+	testing.expect_value(t, m, lxmf.Method.Direct)
+}
+
+@(test)
+test_property_propagation_wrap_invariant :: proc(t: ^testing.T) {
+	rand.reset(0xC01004)
+	for _ in 0 ..< 32 {
+		n := int(lxmf.HASH_LEN + int(rand.uint32() % 48))
+		packed := make([]u8, n)
+		for i in 0 ..< n {
+			packed[i] = u8(rand.uint32())
+		}
+		enc_n := int(1 + rand.uint32() % 24)
+		enc := make([]u8, enc_n)
+		for i in 0 ..< enc_n {
+			enc[i] = u8(rand.uint32())
+		}
+		wrap := lxmf.pack_propagation_payload(packed, enc)
+		testing.expect(t, wrap != nil)
+		testing.expect_value(t, wrap[0], u8(0x92))
+		delete(wrap)
+		delete(enc)
+		delete(packed)
+	}
+}

@@ -172,3 +172,50 @@ test_acceptance_identity_file_mode_owner_only :: proc(t: ^testing.T) {
 	testing.expect(t, .Read_Other not_in mode)
 	testing.expect(t, .Write_Other not_in mode)
 }
+
+@(test)
+test_acceptance_config_propagation_persist :: proc(t: ^testing.T) {
+	base, _ := filepath.join({"/tmp", "ren-tui-acceptance-prop"})
+	_ = os.remove_all(base)
+	defer os.remove_all(base)
+	_ = os.make_directory_all(base)
+
+	cfg := store.config_default()
+	delete(cfg.data_dir)
+	delete(cfg.config_path)
+	cfg.data_dir = strings.clone(base)
+	cfg.config_path, _ = filepath.join({base, "config"})
+
+	pn: [store.HASH_LEN]u8
+	pn[0] = 0xde
+	pn[15] = 0xad
+	store.config_set_propagation_node(&cfg, pn)
+	cfg.send_method = .Propagated
+	cfg.try_propagation_on_fail = false
+	testing.expect(t, store.config_save(&cfg))
+	defer store.config_destroy_strings(&cfg)
+
+	loaded := store.config_default()
+	delete(loaded.data_dir)
+	delete(loaded.config_path)
+	loaded.data_dir = strings.clone(base)
+	loaded.config_path, _ = filepath.join({base, "config"})
+	store.config_load(&loaded)
+	defer store.config_destroy_strings(&loaded)
+
+	testing.expect(t, loaded.has_propagation_node)
+	testing.expect(t, loaded.propagation_node == pn)
+	testing.expect_value(t, loaded.send_method, lxmf.Method.Propagated)
+	testing.expect(t, !loaded.try_propagation_on_fail)
+
+	store.config_clear_propagation_node(&loaded)
+	testing.expect(t, store.config_save(&loaded))
+	again := store.config_default()
+	delete(again.data_dir)
+	delete(again.config_path)
+	again.data_dir = strings.clone(base)
+	again.config_path, _ = filepath.join({base, "config"})
+	store.config_load(&again)
+	defer store.config_destroy_strings(&again)
+	testing.expect(t, !again.has_propagation_node)
+}

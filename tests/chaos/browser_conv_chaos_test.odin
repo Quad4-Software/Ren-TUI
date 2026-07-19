@@ -25,10 +25,13 @@ import rns "rns:rns"
 BROWSER_CHAOS_ITERS :: 60
 
 Chaos_Fake_Send :: struct {
-	opened:    int,
-	sent:      int,
-	closed:    int,
-	fail_open: bool,
+	opened:     int,
+	sent:       int,
+	closed:     int,
+	packets:    int,
+	fail_open:  bool,
+	packet_ok:  bool,
+	encrypt_ok: bool,
 }
 
 chaos_path_ensure :: proc(user: rawptr, dest: [store.HASH_LEN]u8) -> bool {
@@ -61,6 +64,25 @@ chaos_link_send :: proc(user: rawptr, link: rns.Link, data: []u8) -> bool {
 	return true
 }
 
+chaos_packet_send :: proc(user: rawptr, dest: []u8, data: []u8) -> bool {
+	_ = dest
+	_ = data
+	f := cast(^Chaos_Fake_Send)user
+	f.packets += 1
+	return f.packet_ok
+}
+
+chaos_encrypt :: proc(user: rawptr, dest: []u8, plaintext: []u8) -> ([]u8, bool) {
+	_ = dest
+	f := cast(^Chaos_Fake_Send)user
+	if !f.encrypt_ok {
+		return nil, false
+	}
+	out := make([]u8, len(plaintext))
+	copy(out, plaintext)
+	return out, true
+}
+
 chaos_setup_send :: proc(s: ^net.Session, fake: ^Chaos_Fake_Send) -> bool {
 	mat, ok := lxmf.identity_generate()
 	if !ok {
@@ -69,12 +91,16 @@ chaos_setup_send :: proc(s: ^net.Session, fake: ^Chaos_Fake_Send) -> bool {
 	s.material = mat
 	lxmf.router_init(&s.router, mat, "chaos")
 	s.started = true
+	fake.packet_ok = true
+	fake.encrypt_ok = true
 	s.send_transport = net.Send_Transport{
 		user = fake,
 		path_ensure = chaos_path_ensure,
 		link_open = chaos_link_open,
 		link_close = chaos_link_close,
 		link_send = chaos_link_send,
+		packet_send = chaos_packet_send,
+		encrypt = chaos_encrypt,
 		auto_link = true,
 	}
 	return true
@@ -218,8 +244,15 @@ test_chaos_send_receive_events_and_cancel :: proc(t: ^testing.T) {
 	defer net.session_event_ring_clear(&a.session.events)
 	defer net.session_send_cancel(&a.session)
 
+	cfg := store.config_default()
+	defer store.config_destroy_strings(&cfg)
+	pn: [store.HASH_LEN]u8
+	pn[0] = 0x5e
+	store.config_set_propagation_node(&cfg, pn)
+	cfg.try_propagation_on_fail = true
+
 	for _ in 0 ..< 30 {
-		op := rand.uint32() % 4
+		op := rand.uint32() % 5
 		switch op {
 		case 0:
 			net.session_event_push(&a.session, .Message_Received, "in")
@@ -236,7 +269,9 @@ test_chaos_send_receive_events_and_cancel :: proc(t: ^testing.T) {
 			if net.session_send_busy(&a.session) {
 				net.session_send_cancel(&a.session)
 			}
-			_ = net.session_send_begin(&a.session, dest, "", "chaos", &a.conversations, &a.directory, nil)
+			methods := []lxmf.Method{.Direct, .Opportunistic, .Propagated}
+			method := methods[rand.uint32() % u32(len(methods))]
+			_ = net.session_send_begin(&a.session, dest, "", "chaos", &a.conversations, &a.directory, &cfg, method)
 			for _ in 0 ..< 3 {
 				if !net.session_send_busy(&a.session) {
 					break
@@ -246,6 +281,8 @@ test_chaos_send_receive_events_and_cancel :: proc(t: ^testing.T) {
 			if rand.uint32() % 2 == 0 {
 				net.session_send_cancel(&a.session)
 			}
+		case 4:
+			_ = net.session_sync_begin(&a.session, &cfg)
 		}
 	}
 	net.session_send_cancel(&a.session)
@@ -277,6 +314,36 @@ test_edge_send_rejected_while_page_busy :: proc(t: ^testing.T) {
 	dest[0] = 9
 	ok := net.session_send_begin(&s, dest, "", "blocked", &convs, &dir, nil)
 	testing.expect(t, !ok)
+}
+
+@(test)
+test_edge_sync_rejected_while_send_busy :: proc(t: ^testing.T) {
+	fake: Chaos_Fake_Send
+	s: net.Session
+	testing.expect(t, chaos_setup_send(&s, &fake))
+	defer lxmf.router_destroy(&s.router)
+	defer net.session_event_ring_clear(&s.events)
+	defer delete(s.status)
+
+	convs: store.Conversations
+	store.conversations_init(&convs)
+	defer store.conversations_destroy(&convs)
+	dir: store.Directory
+	store.directory_init(&dir)
+	defer store.directory_destroy(&dir)
+
+	cfg := store.config_default()
+	defer store.config_destroy_strings(&cfg)
+	pn: [store.HASH_LEN]u8
+	pn[0] = 1
+	store.config_set_propagation_node(&cfg, pn)
+
+	dest: [store.HASH_LEN]u8
+	dest[0] = 2
+	testing.expect(t, net.session_send_begin(&s, dest, "", "hold", &convs, &dir, nil, .Direct))
+	ok := net.session_sync_begin(&s, &cfg)
+	testing.expect(t, !ok)
+	net.session_send_cancel(&s)
 }
 
 @(test)

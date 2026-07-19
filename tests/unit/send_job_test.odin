@@ -24,6 +24,8 @@ Fake_Send :: struct {
 	fail_until: int,
 	packet_ok:  bool,
 	encrypt_ok: bool,
+	last_dest:  [store.HASH_LEN]u8,
+	has_dest:   bool,
 }
 
 fake_path_ensure :: proc(user: rawptr, dest: [store.HASH_LEN]u8) -> bool {
@@ -33,9 +35,12 @@ fake_path_ensure :: proc(user: rawptr, dest: [store.HASH_LEN]u8) -> bool {
 }
 
 fake_link_open :: proc(user: rawptr, dest: []u8) -> (link: rns.Link, link_id: [store.HASH_LEN]u8, ok: bool) {
-	_ = dest
 	f := cast(^Fake_Send)user
 	f.opened += 1
+	if len(dest) == store.HASH_LEN {
+		copy(f.last_dest[:], dest)
+		f.has_dest = true
+	}
 	if f.fail_open || (f.fail_until > 0 && f.opened <= f.fail_until) {
 		return 0, {}, false
 	}

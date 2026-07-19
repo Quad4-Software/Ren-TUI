@@ -11,6 +11,8 @@ New work goes under the `[draft]` section only. Do not edit `[released]` section
 - Propagation node support: select from Network > Propagation, show selected node and sync status
 - Compose send methods Direct / Opportunistic / Propagate, plus try_propagation_on_send_fail
 - librns PacketSend and DestinationEncrypt for opportunistic and propagate delivery
+- Expand prop coverage across unit smoke property acceptance e2e chaos mutation oracle and blackbox suites
+- Fix prop bugs found by failing tests: case-insensitive send method and NONE, clear stale prop node on bad hex, reject empty propagate ciphertext, do not commit failover wire until encrypt succeeds, ignore sync Request_Response before /get id
 
 ## 0.1.2 - 2026-07-19 [released]
 

@@ -52,6 +52,9 @@ test_smoke_config_default :: proc(t: ^testing.T) {
 	defer store.config_destroy_strings(&cfg)
 	testing.expect(t, len(cfg.display_name) > 0)
 	testing.expect(t, len(cfg.theme_name) > 0)
+	testing.expect(t, cfg.try_propagation_on_fail)
+	testing.expect_value(t, cfg.send_method, lxmf.Method.Direct)
+	testing.expect(t, !cfg.has_propagation_node)
 }
 
 @(test)
