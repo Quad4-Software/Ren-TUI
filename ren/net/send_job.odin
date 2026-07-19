@@ -205,7 +205,10 @@ session_send_direct :: proc(
 	if !session_send_begin(s, dest_hash, title, content, conversations, directory, cfg) {
 		return false
 	}
-	app_buf := make([]u8, 64 * 1024, context.temp_allocator)
+	app_buf := s.poll_buf
+	if len(app_buf) == 0 {
+		app_buf = make([]u8, EVENT_APP_BUF_SIZE, context.temp_allocator)
+	}
 	for session_send_busy(s) {
 		if time.tick_diff(time.tick_now(), s.send.deadline) <= 0 {
 			send_fail(s, "link timeout")

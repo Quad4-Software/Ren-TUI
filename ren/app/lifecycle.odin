@@ -51,8 +51,8 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	a.tab = .Network
 	a.net_view = .Nomad
 	a.ui_dirty = true
-	a.status_left = version.line(context.temp_allocator)
-	a.status_right = "starting"
+	a.status_left = status_copy_buf(a.status_left_buf[:], nil, version.line(context.temp_allocator))
+	a.status_right = status_copy_buf(a.status_hold[:], &a.status_hold_len, "starting")
 
 	log_path, _ := filepath.join({a.cfg.data_dir, constants.LIBRNS_LOG_FILE})
 	_ = ui.stderr_redirect_start(&a.stderr_redir, log_path)
@@ -104,18 +104,16 @@ app_close :: proc(a: ^App) {
 }
 
 set_status :: proc(a: ^App, msg: string, hold: time.Duration) {
-	n := min(len(msg), len(a.status_hold))
-	copy(a.status_hold[:n], transmute([]u8)msg[:n])
-	a.status_hold_len = n
+	a.status_right = status_copy_buf(a.status_hold[:], &a.status_hold_len, msg)
 	a.status_until = time.tick_add(time.tick_now(), hold)
-	a.status_right = string(a.status_hold[:n])
 	mark_dirty(a)
 }
 
 update_status :: proc(a: ^App) {
-	a.status_left = fmt.tprintf("%s  %s", a.cfg.display_name, version.VERSION)
+	left := page_footer_left(a)
+	a.status_left = status_copy_buf(a.status_left_buf[:], nil, left)
 	if net.session_page_busy(&a.session) {
-		a.status_right = net.session_page_status(&a.session)
+		a.status_right = status_copy_buf(a.status_hold[:], &a.status_hold_len, net.session_page_status(&a.session))
 		return
 	}
 	if a.status_hold_len > 0 && time.tick_diff(time.tick_now(), a.status_until) > 0 {
@@ -126,18 +124,85 @@ update_status :: proc(a: ^App) {
 	// Page view stays free of announce directory stats (hot/cold/ann).
 	if a.tab == .Page {
 		if a.online {
-			a.status_right = a.session.status if a.session.status != "" else "online"
+			msg := a.session.status if a.session.status != "" else "online"
+			a.status_right = status_copy_buf(a.status_hold[:], &a.status_hold_len, msg)
 		} else {
-			a.status_right = "offline"
+			a.status_right = status_copy_buf(a.status_hold[:], &a.status_hold_len, "offline")
 		}
 		return
 	}
 	if a.online {
 		stats := net.session_stats_line(&a.session, &a.directory, context.temp_allocator)
-		a.status_right = fmt.tprintf("%s  %s", a.session.status, stats)
+		msg := fmt.tprintf("%s  %s", a.session.status, stats)
+		a.status_right = status_copy_buf(a.status_hold[:], &a.status_hold_len, msg)
 	} else {
-		a.status_right = a.session.status if a.session.status != "" else "offline"
+		msg := a.session.status if a.session.status != "" else "offline"
+		a.status_right = status_copy_buf(a.status_hold[:], &a.status_hold_len, msg)
 	}
+}
+
+// Copy into a fixed buffer so status strings survive temp-allocator free_all.
+status_copy_buf :: proc(buf: []u8, len_out: ^int, msg: string) -> string {
+	n := min(len(msg), len(buf))
+	if n > 0 {
+		copy(buf[:n], transmute([]u8)msg[:n])
+	}
+	if len_out != nil {
+		len_out^ = n
+	}
+	return string(buf[:n])
+}
+
+page_footer_left :: proc(a: ^App) -> string {
+	node, has := page_active_node(a)
+	size := page_footer_size(a)
+	if !has {
+		if size != "" {
+			return fmt.tprintf("Ren TUI  %s", size)
+		}
+		return "Ren TUI"
+	}
+	hops_part := "hops=?"
+	if hops, ok := page_node_hops(a, node); ok {
+		hops_part = fmt.tprintf("hops=%d", hops)
+	}
+	if size != "" {
+		return fmt.tprintf("Ren TUI  %s  %s", hops_part, size)
+	}
+	return fmt.tprintf("Ren TUI  %s", hops_part)
+}
+
+page_footer_size :: proc(a: ^App) -> string {
+	n := len(a.page_source)
+	if n == 0 {
+		return ""
+	}
+	return format_byte_count(u64(n))
+}
+
+page_active_node :: proc(a: ^App) -> (node: [store.HASH_LEN]u8, ok: bool) {
+	if net.session_page_busy(&a.session) {
+		return a.session.page.node, true
+	}
+	if a.page_has_node {
+		return a.page_node, true
+	}
+	return {}, false
+}
+
+page_node_hops :: proc(a: ^App, node: [store.HASH_LEN]u8) -> (hops: u8, ok: bool) {
+	if e, pok := net.path_hot_lookup(&a.session.paths, node); pok {
+		return e.hops, true
+	}
+	for p in a.directory.peers {
+		if p.hash == node {
+			if !p.hops_known {
+				return 0, false
+			}
+			return p.hops, true
+		}
+	}
+	return 0, false
 }
 
 // True when Page-tab status omits directory announce stats (hot/cold/ann).

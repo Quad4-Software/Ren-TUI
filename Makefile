@@ -49,7 +49,7 @@ ODIN_TEST_SERIAL_FLAGS := $(ODIN_TEST_FLAGS) -define:ODIN_TEST_THREADS=1
 .PHONY: all clean install uninstall test \
 	test-smoke test-unit test-property test-fuzz test-acceptance \
 	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop \
-	test-live run listen vendor-librns git-commit remotes help man check dist cross
+	test-live run listen vendor-librns git-commit remotes help man check dist cross bench
 
 all: $(OUT) $(LISTEN)
 
@@ -74,6 +74,7 @@ help:
 		'  run            build and run ren-tui' \
 		'  listen         build and run ren-listen' \
 		'  test           run all test suites' \
+		'  bench          timed micron/conversations/UI benches' \
 		'  install        install binaries, librns, and man pages to PREFIX' \
 		'  uninstall      remove installed files' \
 		'  man            show man page sources under man/' \
@@ -175,6 +176,9 @@ test-race: git-commit $(BIN_LIBRNS)
 
 test-chaos: git-commit $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/chaos $(ODIN_TEST_SERIAL_FLAGS)
+
+bench: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/bench $(ODIN_TEST_SERIAL_FLAGS)
 
 test-interop:
 	python3 tests/interop/python_lxmf_interop.py

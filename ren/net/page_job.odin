@@ -104,6 +104,9 @@ session_page_begin :: proc(
 		session_event_push(s, .Error, "offline")
 		return false
 	}
+	// Drop any in-flight fetch before validating the new request so a bad
+	// follow-up still clears the prior job (caller may already have cancelled).
+	session_page_cancel(s)
 	if page_path == "" {
 		session_event_push(s, .Page_Failed, "bad page path")
 		return false
@@ -121,8 +124,6 @@ session_page_begin :: proc(
 			return false
 		}
 	}
-
-	session_page_cancel(s)
 	s.page.active = true
 	s.page.done = false
 	s.page.ok = false

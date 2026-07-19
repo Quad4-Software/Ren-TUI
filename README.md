@@ -197,12 +197,34 @@ make cross TARGET=linux-armv7 RNS_ROOT=/path/to/Reticulum-Go
 Set `LIBC=glibc` or `LIBC=musl` to force a library set on host Linux. Default is auto-detect.
 CI covers Ubuntu 22.04/24.04 (glibc) plus an Alpine musl compile check. Multi-OS release archives are produced on tag pushes.
 
+## Supported Terminals
+
+Ren targets modern terminals with UTF-8 and at least 16 colors. Truecolor and mouse work when the terminal advertises them (`COLORTERM=truecolor` / `24bit`, or a known `TERM`).
+
+| Terminal | Notes |
+|----------|--------|
+| Alacritty | Truecolor (auto) |
+| Kitty | Truecolor (auto) |
+| foot | Truecolor (auto) |
+| WezTerm | Truecolor (auto) |
+| Ghostty | Usually truecolor via `COLORTERM` / `xterm-256color` |
+| Contour | Usually truecolor via `COLORTERM` |
+| xterm / xterm-256color | 256 color (truecolor if `COLORTERM` set) |
+| tmux / screen | 256 color when outer TERM allows it (set `COLORTERM` / `tmux-256color` as needed) |
+| rxvt-unicode | 256 color |
+| GNOME Terminal / VTE | 256 or truecolor via `COLORTERM` |
+| Konsole | 256 or truecolor via `COLORTERM` |
+| Linux virtual console | Compat / ASCII borders (limited) |
+| vt100 / vt102 | Compat mode, no mouse |
+
+Force a mode with `REN_UI=full|256|compat|dumb` or `color = ...` in config. `NO_COLOR` disables color.
+
 ## Requirements
 
 - Odin compiler
 - Vendored librns (already in-tree under `vendor/librns`)
 - A Reticulum config (defaults prefer `~/.reticulum-go/config`)
-- Linux terminal with reasonable Unicode support recommended
+- A supported terminal with UTF-8 (see above)
 
 ## Build
 
@@ -269,6 +291,7 @@ tests/cross_terminal/   full/256/compat/dumb capability matrix
 tests/mutation/         corrupted messages and codec edges
 tests/race/             concurrent pack/unpack
 tests/chaos/            randomized op sequences
+tests/bench/            timed micron/conversations/UI benches (`make bench`)
 tests/interop/          Python LXMF shapes (skips if stack missing)
 ```
 
@@ -285,12 +308,17 @@ Some UI suites still pin `ODIN_TEST_THREADS=1` for terminal/caps isolation. Them
 - Network `Enter`: fetch node page onto Page screen
 - Page `g`: page URL (`hash:/path` or `/path`)
 - Page `s`: toggle rendered vs raw micron source
+- Page `d`: download current page as `*.mu` into `download_dir`
 - Page `[` `]` or PgUp/PgDn: scroll page
 - Page Esc: back to Network (or cancel in-progress fetch)
 - Esc: cancel in-progress page fetch
 - Click Your LXMF Address in Config to copy (OSC 52)
 
+Config `[client] download_dir` sets where Page `d` writes files. Empty means `~/.config/ren-tui/pages` (or `%APPDATA%\ren-tui\pages` on Windows). Relative paths are under the data dir.
+
 Announce peers are hot-capped (256 in RAM). Overflow goes to `~/.config/ren-tui/peers.msgpack`. Network list rebuilds only on identity/name changes (not hops). TUI redraws only when dirty. Page stays isolated from the announce stream.
+
+On panic or a fatal signal, ren-tui prints a short crash banner (version, `TERM` / `COLORTERM`, hints). Build with `-debug` for stack frames.
 
 ## Docker
 

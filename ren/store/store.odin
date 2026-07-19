@@ -34,6 +34,7 @@ Peer :: struct {
 	last_heard:    f64,
 	kind:          Peer_Kind,
 	hops:          u8,
+	hops_known:    bool,
 }
 
 Conversation :: struct {
@@ -65,6 +66,7 @@ Config :: struct {
 	rns_config:           string,
 	data_dir:             string,
 	config_path:          string,
+	download_dir:         string,
 	stamp_cost:           Maybe(i64),
 	auto_announce:        bool,
 	announce_interval_sec: int,
@@ -115,6 +117,7 @@ config_default :: proc(allocator := context.allocator) -> Config {
 		rns_config = rns,
 		data_dir = base,
 		config_path = cfg_path,
+		download_dir = strings.clone("", allocator),
 		stamp_cost = nil,
 		auto_announce = constants.DEFAULT_AUTO_ANNOUNCE,
 		announce_interval_sec = constants.DEFAULT_ANNOUNCE_INTERVAL_SEC,
@@ -124,6 +127,20 @@ config_default :: proc(allocator := context.allocator) -> Config {
 		theme_name = strings.clone(constants.DEFAULT_THEME, allocator),
 		theme_overrides = {},
 	}
+}
+
+// Resolved page download directory. Empty config uses data_dir/pages.
+// Relative download_dir is joined under data_dir. Absolute paths are used as-is.
+config_download_dir :: proc(c: ^Config, allocator := context.allocator) -> string {
+	if c.download_dir != "" {
+		if filepath.is_abs(c.download_dir) {
+			return strings.clone(c.download_dir, allocator)
+		}
+		p, _ := filepath.join({c.data_dir, c.download_dir}, allocator)
+		return p
+	}
+	p, _ := filepath.join({c.data_dir, constants.DOWNLOADS_DIR}, allocator)
+	return p
 }
 
 resolve_rns_config :: proc(home, data_dir: string, allocator := context.allocator) -> string {
@@ -240,6 +257,9 @@ config_apply_client :: proc(c: ^Config, key, val: string) {
 		} else if n, ok := strconv.parse_i64(val); ok {
 			c.stamp_cost = n
 		}
+	case "download_dir", "page_download_dir", "downloads":
+		delete(c.download_dir)
+		c.download_dir = strings.clone(val)
 	}
 }
 
@@ -277,6 +297,7 @@ config_destroy_strings :: proc(c: ^Config) {
 	delete(c.rns_config)
 	delete(c.data_dir)
 	delete(c.config_path)
+	delete(c.download_dir)
 	delete(c.color_mode)
 	delete(c.theme_name)
 	theme_overrides_destroy(&c.theme_overrides)
@@ -311,6 +332,7 @@ config_save :: proc(c: ^Config) -> bool {
 		"auto_announce = %s\n" +
 		"announce_interval_sec = %d\n" +
 		"stamp_cost = %s\n" +
+		"download_dir = %s\n" +
 		"\n" +
 		"[network]\n" +
 		"rns_config = %s\n" +
@@ -325,6 +347,7 @@ config_save :: proc(c: ^Config) -> bool {
 		"yes" if c.auto_announce else "no",
 		c.announce_interval_sec,
 		stamp,
+		c.download_dir,
 		c.rns_config,
 		"yes" if c.obfuscate_hops else "no",
 		c.color_mode,
@@ -510,7 +533,11 @@ directory_upsert :: proc(
 			p.kind = kind
 			p.stamp_cost = stamp
 			p.last_heard = now
-			p.hops = hops
+			// Announce hops of 0 usually means unset. Keep a better known value.
+			if hops > 0 {
+				p.hops = hops
+				p.hops_known = true
+			}
 			if safe_name != "" {
 				delete(safe_name)
 			}
@@ -528,6 +555,7 @@ directory_upsert :: proc(
 		last_heard = now,
 		kind = kind,
 		hops = hops,
+		hops_known = hops > 0,
 	}
 	append(&d.peers, peer)
 	d.revision += 1
@@ -581,6 +609,32 @@ directory_hops :: proc(d: ^Directory, dest: [HASH_LEN]u8) -> u8 {
 		}
 	}
 	return 0
+}
+
+// Apply hops learned from a real path/link (0 means direct, not unknown).
+directory_apply_path_hops :: proc(d: ^Directory, dest: [HASH_LEN]u8, hops: u8) {
+	for &p in d.peers {
+		if p.hash == dest {
+			if !p.hops_known || p.hops != hops {
+				p.hops = hops
+				p.hops_known = true
+				d.revision += 1
+			}
+			return
+		}
+	}
+}
+
+// Format hops for UI. Unknown announce hops show as hops=?.
+format_peer_hops :: proc(hops: u8, known := true) -> string {
+	if !known {
+		return "hops=?"
+	}
+	return fmt.tprintf("hops=%d", hops)
+}
+
+format_peer_hops_peer :: proc(p: Peer) -> string {
+	return format_peer_hops(p.hops, p.hops_known)
 }
 
 directory_label :: proc(d: ^Directory, hash: [HASH_LEN]u8, allocator := context.allocator) -> string {

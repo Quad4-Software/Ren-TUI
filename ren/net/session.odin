@@ -17,6 +17,8 @@ import "ren:constants"
 import "ren:lxmf"
 import "ren:store"
 
+EVENT_APP_BUF_SIZE :: 64 * 1024
+
 Session :: struct {
 	node:           rns.Node,
 	rns_identity:   rns.Identity,
@@ -37,10 +39,12 @@ Session :: struct {
 	page:           Page_Job,
 	send:           Send_Job,
 	send_transport: Send_Transport,
+	poll_buf:       []u8,
 }
 
 session_create :: proc(s: ^Session, cfg: ^store.Config, display_name: string) -> bool {
 	s^ = {}
+	s.poll_buf = make([]u8, EVENT_APP_BUF_SIZE)
 	interval := cfg.announce_interval_sec
 	if interval < constants.MIN_ANNOUNCE_INTERVAL_SEC {
 		interval = constants.DEFAULT_ANNOUNCE_INTERVAL_SEC
@@ -159,7 +163,10 @@ session_poll :: proc(s: ^Session, directory: ^store.Directory, conversations: ^s
 		session_announce(s)
 	}
 
-	app_buf := make([]u8, 64 * 1024, context.temp_allocator)
+	app_buf := s.poll_buf
+	if len(app_buf) == 0 {
+		app_buf = make([]u8, EVENT_APP_BUF_SIZE, context.temp_allocator)
+	}
 	for {
 		ev, code := rns.event_poll(s.node, 0, app_buf)
 		if code != .Ok || ev.kind == .None {
@@ -175,6 +182,7 @@ session_poll :: proc(s: ^Session, directory: ^store.Directory, conversations: ^s
 	}
 	session_page_tick(s)
 	session_send_tick(s)
+	path_hot_sync_directory(&s.paths, directory)
 }
 
 @(private)
@@ -207,6 +215,7 @@ session_close :: proc(s: ^Session) {
 	delete(s.config_path)
 	session_event_ring_clear(&s.events)
 	delete(s.status)
+	delete(s.poll_buf)
 	s^ = {}
 }
 

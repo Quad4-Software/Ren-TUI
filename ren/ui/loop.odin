@@ -52,6 +52,9 @@ loop_run :: proc(l: ^Loop, draw: Draw_Proc, on_event: Event_Proc, user: rawptr, 
 	loop_activate(l)
 	force := true
 	for !l.quit {
+		// Reclaim per-frame temp arena (status/draw/fmt). Prevents unbounded RSS growth.
+		free_all(context.temp_allocator)
+
 		term_query_size(&l.term)
 		if l.buf.width != l.term.width || l.buf.height != l.term.height {
 			buffer_resize(&l.buf, l.term.width, l.term.height)

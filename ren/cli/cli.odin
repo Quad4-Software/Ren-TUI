@@ -69,6 +69,7 @@ Files:
   ~/.config/ren-tui/config
   ~/.config/ren-tui/identity
   ~/.config/ren-tui/conversations/
+  ~/.config/ren-tui/pages/
   ~/.config/ren-tui/librns.log
 
 `,
@@ -113,6 +114,7 @@ print_paths :: proc(cfg: ^store.Config) {
 	fmt.printf("config        %s\n", cfg.config_path)
 	fmt.printf("identity      %s\n", cfg.identity_path)
 	fmt.printf("conversations %s\n", store.conversations_dir(cfg, context.temp_allocator))
+	fmt.printf("download_dir  %s\n", store.config_download_dir(cfg, context.temp_allocator))
 	fmt.printf("rns_config    %s\n", cfg.rns_config)
 	fmt.printf("librns_log    %s/%s\n", cfg.data_dir, constants.LIBRNS_LOG_FILE)
 }

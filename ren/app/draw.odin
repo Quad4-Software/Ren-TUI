@@ -33,6 +33,7 @@ GUIDE_LINES := [?]string{
 	"Page (micron viewer)",
 	"g         open page URL (hash:/path or /path)",
 	"s         toggle rendered / raw source",
+	"d         download page to download_dir as *.mu",
 	"i         identify then reload page",
 	"Tab       cycle links   Enter open link   click link",
 	"[ ]       scroll   PgUp/PgDn scroll   Esc back to Network",
@@ -44,6 +45,7 @@ GUIDE_LINES := [?]string{
 	"",
 	"Config ~/.config/ren-tui/config",
 	"obfuscate_hops = yes writes RNS local_hops_delta (off by default)",
+	"download_dir under [client] (default ~/.config/ren-tui/pages)",
 	"theme = field|slate|amber|mono under [ui]",
 	"Conversations under ~/.config/ren-tui/conversations/",
 	"Default display name: Anonymous",
@@ -126,7 +128,7 @@ draw_conversations :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		out := msg.direction == .Out
 		who := "you" if out else "them"
 		sig := "ok" if msg.verified else "?"
-		meta := fmt.tprintf("%s  %s  hops=%d", who, sig, msg.hops)
+		meta := fmt.tprintf("%s  %s  %s", who, sig, store.format_peer_hops(msg.hops, msg.hops > 0))
 		body := msg.content
 		if msg.title != "" {
 			body = fmt.tprintf("[%s] %s", msg.title, msg.content)
@@ -237,10 +239,7 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		max(0, inner.h - header_h - (3 if a.url_editing else 0)),
 	}
 	if net.session_page_busy(&a.session) {
-		msg := net.session_page_status(&a.session)
-		ui.buffer_text(buf, body.x + 1, body.y, "Loading NomadNet page...", t.title, t.bg)
-		ui.buffer_text(buf, body.x + 1, body.y + 1, truncate(msg, body.w - 2), t.highlight_fg, t.bg)
-		ui.buffer_text(buf, body.x + 1, body.y + 3, "Esc cancels fetch", t.muted, t.bg)
+		draw_page_loading(a, buf, body)
 	} else if a.page_source == "" {
 		ui.buffer_text(buf, body.x + 1, body.y, "No page loaded", t.muted, t.bg)
 		ui.buffer_text(buf, body.x + 1, body.y + 1, "Open a NomadNet node from Network (Enter)", t.muted, t.bg)
@@ -259,6 +258,70 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		edit_r := ui.Rect{inner.x, inner.y + inner.h - 3, inner.w, 3}
 		ui.draw_input(buf, edit_r, &a.url_edit, "page URL", true)
 	}
+}
+
+draw_page_loading :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
+	t := ui.theme()
+	ui.buffer_fill_rect(buf, body.x, body.y, body.w, body.h, ' ', t.fg, t.bg)
+
+	node := a.session.page.node
+	hex := store.hash_hex(node, context.temp_allocator)
+	if len(hex) > 12 {
+		hex = hex[:12]
+	}
+	path := a.session.page.path if a.session.page.path != "" else constants.DEFAULT_PAGE_PATH
+	phase := page_phase_label(a.session.page.phase)
+	status := net.session_page_status(&a.session)
+	hops_line := "hops=?"
+	if hops, ok := page_node_hops(a, node); ok {
+		hops_line = fmt.tprintf("hops=%d", hops)
+	}
+	spin := page_loading_spinner(a.poll_ticks)
+
+	panel_w := min(body.w - 2, 56)
+	panel_h := min(body.h - 2, 11)
+	if panel_w < 24 || panel_h < 7 {
+		ui.buffer_text(buf, body.x + 1, body.y, truncate(fmt.tprintf("%s Loading %s", spin, path), body.w - 2), t.title, t.bg)
+		ui.buffer_text(buf, body.x + 1, body.y + 1, truncate(status, body.w - 2), t.highlight_fg, t.bg)
+		ui.buffer_text(buf, body.x + 1, body.y + 2, "Esc cancel", t.muted, t.bg)
+		return
+	}
+	px := body.x + max(0, (body.w - panel_w) / 2)
+	py := body.y + max(0, (body.h - panel_h) / 2)
+	panel := ui.Rect{px, py, panel_w, panel_h}
+	ui.draw_box(buf, panel, "loading", true)
+	inner := ui.rect_inset(panel, 1)
+	ui.buffer_text(buf, inner.x + 1, inner.y, truncate(fmt.tprintf("%s  Fetching NomadNet page", spin), inner.w - 2), t.title, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 2, truncate(fmt.tprintf("node  %s", hex), inner.w - 2), t.fg, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 3, truncate(fmt.tprintf("path  %s", path), inner.w - 2), t.fg, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 4, truncate(fmt.tprintf("via   %s  %s", phase, hops_line), inner.w - 2), t.highlight_fg, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 6, truncate(status, inner.w - 2), t.muted, t.bg)
+	if inner.h > 8 {
+		ui.buffer_text(buf, inner.x + 1, inner.y + inner.h - 1, "Esc cancel   open another node to switch", t.muted, t.bg)
+	}
+}
+
+page_phase_label :: proc(phase: net.Page_Phase) -> string {
+	switch phase {
+	case .Idle:
+		return "idle"
+	case .Finding_Path:
+		return "finding path"
+	case .Opening_Link:
+		return "opening link"
+	case .Waiting_Link:
+		return "waiting for link"
+	case .Sending_Request:
+		return "sending request"
+	case .Waiting_Response:
+		return "waiting for page"
+	}
+	return "working"
+}
+
+page_loading_spinner :: proc(ticks: u64) -> string {
+	frames := [?]string{"|", "/", "-", "\\"}
+	return frames[ticks % u64(len(frames))]
 }
 
 draw_interfaces :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
