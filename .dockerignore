@@ -1,0 +1,15 @@
+.git
+.github/workflows
+bin
+**/*.md
+!README.md
+!docker/README.md
+!LICENSE
+*.o
+*.a
+*.log
+.ols
+.DS_Store
+out
+dist
+artifacts

@@ -1,0 +1,103 @@
+.\" SPDX-License-Identifier: 0BSD
+.TH REN-TUI 1 "2026" "ren-tui 0.1.0" "User Commands"
+.SH NAME
+ren-tui \- terminal LXMF / NomadNet client for Reticulum
+.SH SYNOPSIS
+.B ren-tui
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B ren-tui
+is an experimental terminal client for LXMF messaging and NomadNet static page browsing
+on the Reticulum network. It uses librns and a custom immediate-mode TUI.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Show help and exit.
+.TP
+.BR \-v ", " \-V ", " \-\-version
+Show version and exit.
+.TP
+.B \-\-paths
+Print resolved config, identity, conversation, and RNS paths, then exit.
+.TP
+.BI \-\-config " PATH"
+App config file. Default:
+.IR ~/.config/ren\-tui/config
+(Unix) or
+.IR %APPDATA%\\ren\-tui\\config
+(Windows).
+.TP
+.BI \-\-data\-dir " PATH"
+Data directory for config, identity, conversations, and logs.
+Default:
+.IR ~/.config/ren\-tui
+(Unix) or
+.IR %APPDATA%\\ren\-tui
+(Windows).
+.TP
+.BR \-c ", " \-\-rns\-config " " \fIPATH\fR
+Reticulum config file. Overrides
+.BR REN_RNS_CONFIG .
+.TP
+.B \-\-reset\-config
+Rewrite the app config file with defaults (keeps identity).
+.TP
+.B \-\-reset\-conversations
+Delete stored conversations under the data directory.
+.TP
+.B \-\-reset\-identity
+Delete the local identity file (a new one is created on next start).
+.TP
+.B \-\-reset
+Reset config and conversations. Does not remove identity unless
+.B \-\-reset\-identity
+is also given.
+.SH ENVIRONMENT
+.TP
+.B REN_RNS_CONFIG
+Override Reticulum config path.
+.TP
+.B REN_UI
+Force UI color mode:
+.BR full ,
+.BR 256 ,
+.BR compat ,
+or
+.BR dumb .
+.TP
+.B NO_COLOR
+Disable color when set.
+.TP
+.B HOME
+Used to resolve
+.IR ~/.config/ren\-tui
+on Unix.
+.TP
+.B USERPROFILE
+.TQ
+.B APPDATA
+Used to resolve the Windows data directory
+.IR %APPDATA%\\ren\-tui .
+.SH FILES
+.TP
+.I ~/.config/ren-tui/config
+Plaintext INI-style app config (Unix / macOS).
+.TP
+.I %APPDATA%\\ren-tui\\config
+Plaintext INI-style app config (Windows).
+.TP
+.I ~/.config/ren-tui/identity
+Local LXMF identity material.
+.TP
+.I ~/.config/ren-tui/conversations/
+Per-peer msgpack conversation stores.
+.TP
+.I ~/.config/ren-tui/librns.log
+Redirected librns stderr log.
+.TP
+.I ~/.reticulum-go/config
+Preferred Reticulum config when present.
+.SH SEE ALSO
+.BR ren-listen (1)
+.SH BUGS
+Experimental. Not ready for production use.

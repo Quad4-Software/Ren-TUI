@@ -1,0 +1,19 @@
+bin/
+!bin/.gitkeep
+*.o
+*.a
+!vendor/librns/lib-musl/librns.a
+.ols
+*.log
+.DS_Store
+out/
+dist/
+.deps/
+
+# Ignore stray shared libs, keep the vendored ones
+*.so
+*.dll
+*.dylib
+*.exe
+!vendor/librns/lib/librns.so
+!bin/librns.so
