@@ -11,6 +11,7 @@ import "core:fmt"
 import "core:strings"
 
 import "ren:constants"
+import "ren:lxmf"
 import "ren:micron"
 import "ren:net"
 import "ren:store"
@@ -26,9 +27,20 @@ GUIDE_LINES := [?]string{
 	"",
 	"Network",
 	"l/n/p     LXMF / NomadNet / Propagation views",
-	"/         search peers   Enter open NomadNet page",
+	"/         search peers",
+	"Enter     Nomad page, compose to LXMF, or set propagation node",
+	"u         sync with selected propagation node",
 	"i         identify to NomadNet node (needs active link)",
 	"Peers hot-capped; overflow in peers.msgpack",
+	"",
+	"Propagation",
+	"Select a node with Enter before Propagate send or sync",
+	"Detail panel shows selected node and sync status",
+	"",
+	"Compose",
+	"Tab       cycle to / method / message",
+	"m or Left/Right on method   Direct / Opportunistic / Propagate",
+	"Enter     send with current method",
 	"",
 	"Page (micron viewer)",
 	"g         open page URL (hash:/path or /path)",
@@ -48,6 +60,9 @@ GUIDE_LINES := [?]string{
 	"",
 	"Config ~/.config/ren-tui/config",
 	"obfuscate_hops = yes writes RNS local_hops_delta (off by default)",
+	"try_propagation_on_send_fail = yes|no",
+	"send_method = direct|opportunistic|propagated",
+	"propagation_node = <32 hex>",
 	"download_dir under [client] (default ~/.config/ren-tui/pages)",
 	"theme = field|slate|amber|mono under [ui]",
 	"Conversations under ~/.config/ren-tui/conversations/",
@@ -187,17 +202,29 @@ draw_network :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	view := NET_VIEW_LABELS[int(a.net_view)]
 	ui.buffer_text(buf, right.x + 1, right.y, fmt.tprintf("View: %s", view), t.title, t.bg)
 	ui.buffer_text(buf, right.x + 1, right.y + 1, "l LXMF   n NomadNet   p Propagation", t.muted, t.bg)
-	ui.buffer_text(buf, right.x + 1, right.y + 2, "/ search   Enter/click open Nomad page", t.muted, t.bg)
+	if a.net_view == .Propagation {
+		ui.buffer_text(buf, right.x + 1, right.y + 2, "/ search   Enter set default PN   u sync", t.muted, t.bg)
+	} else {
+		ui.buffer_text(buf, right.x + 1, right.y + 2, "/ search   Enter/click open Nomad page", t.muted, t.bg)
+	}
 	q := strings.trim_space(ui.input_value(&a.net_search))
 	if q != "" || a.net_searching {
 		ui.buffer_text(buf, right.x + 1, right.y + 4, truncate(fmt.tprintf("filter: %s", q if q != "" else "..."), right.w - 2), t.highlight_fg, t.bg)
 	}
 	stats := net.session_stats_line(&a.session, &a.directory, context.temp_allocator)
 	ui.buffer_text(buf, right.x + 1, right.y + 6, truncate(stats, right.w - 2), t.muted, t.bg)
+
+	y := right.y + 8
+	pn_label := store.config_propagation_label(&a.cfg, &a.directory, context.temp_allocator)
+	ui.buffer_text(buf, right.x + 1, y, truncate(fmt.tprintf("Prop node: %s", pn_label), right.w - 2), t.fg, t.bg)
+	y += 1
+	sync_line := net.session_sync_status_line(&a.session, &a.cfg, context.temp_allocator)
+	ui.buffer_text(buf, right.x + 1, y, truncate(fmt.tprintf("Sync: %s", sync_line), right.w - 2), t.muted, t.bg)
+	y += 2
 	ui.buffer_text(
 		buf,
 		right.x + 1,
-		right.y + 8,
+		y,
 		truncate(fmt.tprintf("show<=%d hot<=%d  cold peers.msgpack", ui.network_list_row_cap(max(1, left.h)), constants.PEERS_HOT_MAX), right.w - 2),
 		t.muted,
 		t.bg,
@@ -416,14 +443,24 @@ draw_compose :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	ui.draw_box(buf, r, "compose", true)
 	inner := ui.rect_inset(r, 1)
 	to_rect := ui.Rect{inner.x, inner.y, inner.w, 3}
-	body_rect := ui.Rect{inner.x, inner.y + 3, inner.w, max(3, inner.h - 4)}
+	method_y := inner.y + 3
+	body_rect := ui.Rect{inner.x, inner.y + 5, inner.w, max(3, inner.h - 6)}
 	hint := ui.Rect{inner.x, inner.y + inner.h - 1, inner.w, 1}
 	a.list_rect = to_rect
 	a.detail_rect = body_rect
 	ui.draw_input(buf, to_rect, &a.compose_to, "to (LXMF address)", a.compose_focus == 0)
-	ui.draw_input(buf, body_rect, &a.compose_body, "message", a.compose_focus == 1)
 	t := ui.theme()
-	ui.buffer_text(buf, hint.x, hint.y, "Enter send   Tab focus", t.muted, t.bg)
+	method_fg := t.highlight_fg if a.compose_focus == 1 else t.muted
+	ui.buffer_text(
+		buf,
+		inner.x + 1,
+		method_y,
+		truncate(fmt.tprintf("method: %s  (m / Left / Right)", lxmf.method_label(a.compose_method)), inner.w - 2),
+		method_fg,
+		t.bg,
+	)
+	ui.draw_input(buf, body_rect, &a.compose_body, "message", a.compose_focus == 2)
+	ui.buffer_text(buf, hint.x, hint.y, "Enter send   Tab focus   m cycle method", t.muted, t.bg)
 }
 
 draw_config :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {

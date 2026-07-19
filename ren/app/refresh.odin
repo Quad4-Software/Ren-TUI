@@ -11,6 +11,7 @@ import "core:fmt"
 import "core:strings"
 
 import "ren:constants"
+import "ren:lxmf"
 import "ren:net"
 import "ren:store"
 import "ren:ui"
@@ -64,6 +65,10 @@ refresh_config_list :: proc(a: ^App) {
 	ui.list_push(&a.config_list, fmt.tprintf("Obfuscate hops: %s", "yes" if a.cfg.obfuscate_hops else "no"))
 	dl := a.cfg.download_dir if a.cfg.download_dir != "" else fmt.tprintf("(default %s/%s)", a.cfg.data_dir, constants.DOWNLOADS_DIR)
 	ui.list_push(&a.config_list, fmt.tprintf("Download dir: %s", dl))
+	pn := store.config_propagation_label(&a.cfg, &a.directory, context.temp_allocator)
+	ui.list_push(&a.config_list, fmt.tprintf("Propagation node: %s", pn))
+	ui.list_push(&a.config_list, fmt.tprintf("Try prop on send fail: %s", "yes" if a.cfg.try_propagation_on_fail else "no"))
+	ui.list_push(&a.config_list, fmt.tprintf("Send method: %s", lxmf.method_label(a.cfg.send_method)))
 	ui.list_push(&a.config_list, "Restart Network Stack")
 	ui.list_push(&a.config_list, "Save config")
 	a.config_list.selected = clamp(prev_cfg, 0, len(a.config_list.items) - 1)
@@ -183,7 +188,11 @@ refresh_network_list :: proc(a: ^App, prev_sel, prev_scroll: int) {
 		if sc, ok := peer.stamp_cost.?; ok {
 			cost = fmt.tprintf(" cost=%d", sc)
 		}
-		ui.list_push(&a.net_list, fmt.tprintf("  %s  %s%s %s", name, hex, cost, store.format_peer_hops_peer(peer)))
+		mark := " "
+		if a.cfg.has_propagation_node && peer.kind == .Propagation && peer.hash == a.cfg.propagation_node {
+			mark = "*"
+		}
+		ui.list_push(&a.net_list, fmt.tprintf("%s %s  %s%s %s", mark, name, hex, cost, store.format_peer_hops_peer(peer)))
 		append(&a.net_peer_idx, i)
 		shown += 1
 	}

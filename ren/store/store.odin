@@ -60,21 +60,25 @@ Stored_Message :: struct {
 }
 
 Config :: struct {
-	home:                 string,
-	display_name:         string,
-	identity_path:        string,
-	rns_config:           string,
-	data_dir:             string,
-	config_path:          string,
-	download_dir:         string,
-	stamp_cost:           Maybe(i64),
-	auto_announce:        bool,
-	announce_interval_sec: int,
-	obfuscate_hops:       bool,
-	mouse:                bool,
-	color_mode:           string,
-	theme_name:           string,
-	theme_overrides:      Theme_Overrides,
+	home:                    string,
+	display_name:            string,
+	identity_path:           string,
+	rns_config:              string,
+	data_dir:                string,
+	config_path:             string,
+	download_dir:            string,
+	stamp_cost:              Maybe(i64),
+	auto_announce:           bool,
+	announce_interval_sec:   int,
+	obfuscate_hops:          bool,
+	propagation_node:        [HASH_LEN]u8,
+	has_propagation_node:    bool,
+	try_propagation_on_fail: bool,
+	send_method:             lxmf.Method,
+	mouse:                   bool,
+	color_mode:              string,
+	theme_name:              string,
+	theme_overrides:         Theme_Overrides,
 }
 
 user_home_dir :: proc(allocator := context.allocator) -> string {
@@ -122,6 +126,10 @@ config_default :: proc(allocator := context.allocator) -> Config {
 		auto_announce = constants.DEFAULT_AUTO_ANNOUNCE,
 		announce_interval_sec = constants.DEFAULT_ANNOUNCE_INTERVAL_SEC,
 		obfuscate_hops = false,
+		propagation_node = {},
+		has_propagation_node = false,
+		try_propagation_on_fail = true,
+		send_method = .Direct,
 		mouse = constants.DEFAULT_MOUSE,
 		color_mode = strings.clone(constants.DEFAULT_COLOR_MODE, allocator),
 		theme_name = strings.clone(constants.DEFAULT_THEME, allocator),
@@ -260,6 +268,12 @@ config_apply_client :: proc(c: ^Config, key, val: string) {
 	case "download_dir", "page_download_dir", "downloads":
 		delete(c.download_dir)
 		c.download_dir = strings.clone(val)
+	case "try_propagation_on_send_fail", "try_propagation_on_fail":
+		c.try_propagation_on_fail = parse_bool(val, true)
+	case "send_method", "delivery_method":
+		c.send_method = lxmf.parse_send_method(val)
+	case "propagation_node":
+		config_set_propagation_node_hex(c, val)
 	}
 }
 
@@ -314,6 +328,42 @@ parse_bool :: proc(val: string, fallback: bool) -> bool {
 	return fallback
 }
 
+config_set_propagation_node :: proc(c: ^Config, hash: [HASH_LEN]u8) {
+	c.propagation_node = hash
+	c.has_propagation_node = true
+}
+
+config_clear_propagation_node :: proc(c: ^Config) {
+	c.propagation_node = {}
+	c.has_propagation_node = false
+}
+
+config_set_propagation_node_hex :: proc(c: ^Config, hex_str: string) {
+	s := strings.trim_space(hex_str)
+	if s == "" || s == "none" {
+		config_clear_propagation_node(c)
+		return
+	}
+	hash, ok := lxmf.decode_hex32(s)
+	if !ok {
+		return
+	}
+	config_set_propagation_node(c, hash)
+}
+
+config_propagation_label :: proc(c: ^Config, directory: ^Directory, allocator := context.allocator) -> string {
+	if !c.has_propagation_node {
+		return strings.clone("none (select in Network > Propagation)", allocator)
+	}
+	hex := hash_hex(c.propagation_node, context.temp_allocator)
+	label := directory_label(directory, c.propagation_node)
+	defer delete(label)
+	if label != "" && label != hex {
+		return fmt.aprintf("%s  %s", hex, label, allocator = allocator)
+	}
+	return strings.clone(hex, allocator)
+}
+
 config_save :: proc(c: ^Config) -> bool {
 	if !config_ensure_dirs(c) {
 		return false
@@ -333,6 +383,9 @@ config_save :: proc(c: ^Config) -> bool {
 		"announce_interval_sec = %d\n" +
 		"stamp_cost = %s\n" +
 		"download_dir = %s\n" +
+		"try_propagation_on_send_fail = %s\n" +
+		"send_method = %s\n" +
+		"propagation_node = %s\n" +
 		"\n" +
 		"[network]\n" +
 		"rns_config = %s\n" +
@@ -348,6 +401,9 @@ config_save :: proc(c: ^Config) -> bool {
 		c.announce_interval_sec,
 		stamp,
 		c.download_dir,
+		"yes" if c.try_propagation_on_fail else "no",
+		lxmf.send_method_config_value(c.send_method),
+		hash_hex(c.propagation_node, context.temp_allocator) if c.has_propagation_node else "",
 		c.rns_config,
 		"yes" if c.obfuscate_hops else "no",
 		c.color_mode,

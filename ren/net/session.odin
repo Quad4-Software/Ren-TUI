@@ -39,6 +39,7 @@ Session :: struct {
 	page:           Page_Job,
 	send:           Send_Job,
 	send_transport: Send_Transport,
+	sync:           Sync_Job,
 	poll_buf:       []u8,
 }
 
@@ -178,10 +179,14 @@ session_poll :: proc(s: ^Session, directory: ^store.Directory, conversations: ^s
 		if session_send_on_event(s, &ev) {
 			continue
 		}
+		if session_sync_on_event(s, &ev) {
+			continue
+		}
 		session_handle_event(s, &ev, directory, conversations, cfg)
 	}
 	session_page_tick(s)
 	session_send_tick(s)
+	session_sync_tick(s)
 	path_hot_sync_directory(&s.paths, directory)
 }
 
@@ -195,6 +200,7 @@ bytes_clone :: proc(data: []u8, allocator := context.allocator) -> []u8 {
 session_close :: proc(s: ^Session) {
 	session_page_cancel(s)
 	session_send_cancel(s)
+	session_sync_cancel(s)
 	path_finder_clear(&s.paths)
 	if s.delivery_dest != 0 {
 		_ = rns.destination_destroy(s.delivery_dest)
