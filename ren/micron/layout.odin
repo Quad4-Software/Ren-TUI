@@ -11,11 +11,13 @@ import "core:strings"
 import "core:unicode/utf8"
 
 Layout_Seg :: struct {
-	text:   string,
-	style:  Style,
-	kind:   Span_Kind,
-	url:    string,
-	link_i: int,
+	text:       string,
+	style:      Style,
+	kind:       Span_Kind,
+	url:        string,
+	link_i:     int,
+	field_i:    int,
+	field_spec: string,
 }
 
 Layout_Row :: struct {
@@ -36,11 +38,12 @@ layout_doc :: proc(doc: Doc, width: int, allocator := context.allocator) -> [dyn
 	rows := make([dynamic]Layout_Row, 0, len(doc.lines), allocator)
 	w := max(1, width)
 	link_i := 0
+	field_i := 0
 	for line_i in 0 ..< len(doc.lines) {
 		line := doc.lines[line_i]
 		indent := min(line.depth, 8) * 2
 		content_w := max(1, w - indent)
-		layout_wrap_line(&rows, line, line_i, indent, content_w, &link_i, allocator)
+		layout_wrap_line(&rows, line, line_i, indent, content_w, &link_i, &field_i, allocator)
 	}
 	return rows
 }
@@ -65,6 +68,21 @@ layout_first_row_for_link :: proc(doc: Doc, width: int, link_focus: int) -> int 
 	return 0
 }
 
+layout_first_row_for_field :: proc(doc: Doc, width: int, field_focus: int) -> int {
+	if field_focus < 0 {
+		return 0
+	}
+	rows := layout_doc(doc, width, context.temp_allocator)
+	for i in 0 ..< len(rows) {
+		for seg in rows[i].segs {
+			if seg.field_i == field_focus {
+				return i
+			}
+		}
+	}
+	return 0
+}
+
 layout_row_width :: proc(row: Layout_Row) -> int {
 	n := row.indent
 	for seg in row.segs {
@@ -81,6 +99,7 @@ layout_wrap_line :: proc(
 	indent: int,
 	content_w: int,
 	link_i: ^int,
+	field_i: ^int,
 	allocator := context.allocator,
 ) {
 	start_len := len(rows^)
@@ -103,6 +122,11 @@ layout_wrap_line :: proc(
 			span_link = link_i^
 			link_i^ += 1
 		}
+		span_field := -1
+		if span.kind == .Field {
+			span_field = field_i^
+			field_i^ += 1
+		}
 
 		if span.kind == .HR {
 			for col < content_w {
@@ -114,6 +138,8 @@ layout_wrap_line :: proc(
 					kind = .HR,
 					url = "",
 					link_i = -1,
+					field_i = -1,
+					field_spec = "",
 				})
 				col = content_w
 			}
@@ -154,6 +180,8 @@ layout_wrap_line :: proc(
 					kind = span.kind,
 					url = span.url,
 					link_i = span_link,
+					field_i = span_field,
+					field_spec = span.field_spec,
 				})
 				col += ws_cols
 				text = text[ws_bytes:]
@@ -169,6 +197,8 @@ layout_wrap_line :: proc(
 					kind = span.kind,
 					url = span.url,
 					link_i = span_link,
+					field_i = span_field,
+					field_spec = span.field_spec,
 				})
 				col += word_cols
 				text = rest
@@ -189,6 +219,8 @@ layout_wrap_line :: proc(
 				kind = span.kind,
 				url = span.url,
 				link_i = span_link,
+				field_i = span_field,
+				field_spec = span.field_spec,
 			})
 			text = text[piece_bytes:]
 			commit(rows, &row, line_i, indent, allocator)

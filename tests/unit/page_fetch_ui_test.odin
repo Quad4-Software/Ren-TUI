@@ -82,7 +82,7 @@ test_footer_left_ren_tui_and_hops :: proc(t: ^testing.T) {
 	store.directory_init(&a.directory)
 	defer store.directory_destroy(&a.directory)
 
-	testing.expect_value(t, app.page_footer_left(&a), "Ren TUI")
+	testing.expect(t, strings.has_prefix(app.page_footer_left(&a), "Ren TUI"))
 
 	node: [store.HASH_LEN]u8
 	node[0] = 7
@@ -115,12 +115,65 @@ test_iface_cache_keeps_snapshot_on_empty_poll :: proc(t: ^testing.T) {
 		enabled = true,
 	})
 	// session not started -> list returns 0, must not wipe cache
-	app.refresh_iface_cache(&a)
+	_ = app.refresh_iface_cache(&a)
 	testing.expect_value(t, len(a.ifaces), 1)
 	testing.expect_value(t, a.ifaces[0].name, "tcp")
 	delete(a.ifaces[0].name)
 	delete(a.ifaces[0].type_n)
 	delete(a.ifaces)
+}
+
+@(test)
+test_iface_cache_partial_poll_uses_miss_grace :: proc(t: ^testing.T) {
+	ifaces: [dynamic]app.Iface_View
+	defer {
+		for &iface in ifaces {
+			delete(iface.name)
+			delete(iface.type_n)
+		}
+		delete(ifaces)
+	}
+	append(&ifaces, app.Iface_View{name = strings.clone("a"), type_n = strings.clone("TCP"), online = true})
+	append(&ifaces, app.Iface_View{name = strings.clone("b"), type_n = strings.clone("UDP"), online = true})
+	append(&ifaces, app.Iface_View{name = strings.clone("c"), type_n = strings.clone("Auto"), online = false})
+
+	// Partial poll: only a present. Others must remain for IFACE_MISS_LIMIT-1 polls.
+	only_a := []net.Iface_Info{{name = "a", type_n = "TCP", online = true, enabled = true}}
+	for _ in 0 ..< app.IFACE_MISS_LIMIT - 1 {
+		changed := app.apply_iface_infos(&ifaces, only_a)
+		_ = changed
+		testing.expect_value(t, len(ifaces), 3)
+	}
+	_ = app.apply_iface_infos(&ifaces, only_a)
+	testing.expect_value(t, len(ifaces), 1)
+	testing.expect_value(t, ifaces[0].name, "a")
+}
+
+@(test)
+test_iface_sort_stable_by_name_not_online :: proc(t: ^testing.T) {
+	ifaces: [dynamic]app.Iface_View
+	defer {
+		for &iface in ifaces {
+			delete(iface.name)
+			delete(iface.type_n)
+		}
+		delete(ifaces)
+	}
+	append(&ifaces, app.Iface_View{name = strings.clone("zeta"), type_n = strings.clone("TCP"), online = true})
+	append(&ifaces, app.Iface_View{name = strings.clone("alpha"), type_n = strings.clone("UDP"), online = false})
+	_ = app.sort_ifaces_by_name(&ifaces)
+	testing.expect_value(t, ifaces[0].name, "alpha")
+	testing.expect_value(t, ifaces[1].name, "zeta")
+
+	infos := []net.Iface_Info{
+		{name = "zeta", type_n = "TCP", online = false, enabled = true},
+		{name = "alpha", type_n = "UDP", online = true, enabled = true},
+	}
+	_ = app.apply_iface_infos(&ifaces, infos)
+	testing.expect_value(t, ifaces[0].name, "alpha")
+	testing.expect_value(t, ifaces[1].name, "zeta")
+	testing.expect(t, ifaces[0].online)
+	testing.expect(t, !ifaces[1].online)
 }
 
 @(test)
@@ -130,4 +183,32 @@ test_page_loading_spinner_cycles :: proc(t: ^testing.T) {
 	testing.expect_value(t, app.page_loading_spinner(2), "-")
 	testing.expect_value(t, app.page_loading_spinner(3), "\\")
 	testing.expect_value(t, app.page_loading_spinner(4), "|")
+}
+
+@(test)
+test_footer_keybinds_page_and_conversations :: proc(t: ^testing.T) {
+	a: app.App
+	a.tab = .Page
+	a.page_source = "hi"
+	keys := app.footer_keybinds(&a)
+	testing.expect(t, strings.contains(keys, "s source"))
+	testing.expect(t, strings.contains(keys, "d save"))
+	testing.expect(t, strings.contains(keys, "i id"))
+	a.tab = .Conversations
+	keys = app.footer_keybinds(&a)
+	testing.expect(t, strings.contains(keys, "search"))
+}
+
+@(test)
+test_page_node_display_name_known :: proc(t: ^testing.T) {
+	a: app.App
+	store.directory_init(&a.directory)
+	defer store.directory_destroy(&a.directory)
+	node: [store.HASH_LEN]u8
+	node[0] = 0xab
+	store.directory_upsert(&a.directory, node, node, .Nomad_Node, "MoonGate", nil, 0)
+	testing.expect_value(t, app.page_node_display_name(&a, node), "MoonGate")
+	other: [store.HASH_LEN]u8
+	other[0] = 0xcd
+	testing.expect_value(t, app.page_node_display_name(&a, other), "unknown node")
 }

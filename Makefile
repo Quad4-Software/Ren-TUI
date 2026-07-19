@@ -49,7 +49,8 @@ ODIN_TEST_SERIAL_FLAGS := $(ODIN_TEST_FLAGS) -define:ODIN_TEST_THREADS=1
 .PHONY: all clean install uninstall test \
 	test-smoke test-unit test-property test-fuzz test-acceptance \
 	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop \
-	test-live run listen vendor-librns git-commit remotes help man check dist cross bench
+	test-live run listen vendor-librns git-commit remotes help man check dist cross bench \
+	package package-deb package-rpm package-arch package-nix
 
 all: $(OUT) $(LISTEN)
 
@@ -83,6 +84,11 @@ help:
 		'  cross          build for TARGET= (uses ci/scripts/build-target.sh)' \
 		'  clean          remove bin/' \
 		'  dist           build then set RUNPATH to $$ORIGIN (needs patchelf)' \
+		'  package        build deb rpm and Arch pkg.tar.zst into dist/pkg' \
+		'  package-deb    build .deb (needs dpkg-deb)' \
+		'  package-rpm    build .rpm (needs rpmbuild)' \
+		'  package-arch   build .pkg.tar.zst (needs tar+zstd)' \
+		'  package-nix    build with nix (needs nix, flake.nix)' \
 		'' \
 		'Variables: PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) LIVE_SECS=$(LIVE_SECS) LIBC=$(LIBC) TARGET= RNS_ROOT='
 
@@ -179,6 +185,21 @@ test-chaos: git-commit $(BIN_LIBRNS)
 
 bench: git-commit $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/bench $(ODIN_TEST_SERIAL_FLAGS)
+
+package:
+	sh $(ROOT)/ci/scripts/package-all.sh
+
+package-deb:
+	sh $(ROOT)/ci/scripts/package-deb.sh
+
+package-rpm:
+	sh $(ROOT)/ci/scripts/package-rpm.sh
+
+package-arch:
+	sh $(ROOT)/ci/scripts/package-arch.sh
+
+package-nix:
+	nix build .#ren-tui -L
 
 test-interop:
 	python3 tests/interop/python_lxmf_interop.py

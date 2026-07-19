@@ -52,11 +52,16 @@ parse_link :: proc(line: string, start: int, style: Style, allocator := context.
 		}
 	}
 	formatted := format_nomadnetwork_url(dest, allocator)
+	field_spec := ""
+	if trim_ascii_spaces(fields) != "" {
+		field_spec = strings.clone(fields, allocator)
+	}
 	return end - start + 1, Span{
 		kind = .Link,
 		text = sanitize_text_runes(label, allocator),
 		url = formatted,
 		style = style,
+		field_spec = field_spec,
 	}, true
 }
 

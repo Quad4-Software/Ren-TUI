@@ -35,13 +35,16 @@ GUIDE_LINES := [?]string{
 	"s         toggle rendered / raw source",
 	"d         download page to download_dir as *.mu",
 	"i         identify then reload page",
-	"Tab       cycle links   Enter open link   click link",
+	"Tab       cycle links/fields   Enter open/toggle",
+	"Space     toggle checkbox/radio   type to edit text",
 	"[ ]       scroll   PgUp/PgDn scroll   Esc back to Network",
 	"Links: /page/...  hash:/page/...  lxmf://hash",
-	"Dynamic: /page/x.mu`var=1|field.user=alice",
+	"Forms: <flags|name|value`data>  submit via [label`url`fields]",
+	"Dynamic: /page/x.mu`var=1|field.user=alice  or `user|*",
 	"Dangerous schemes blocked. External http shown only.",
 	"",
-	"Conversations  / search",
+	"Conversations",
+	"/         search   Up/Down list   PgUp/PgDn messages",
 	"",
 	"Config ~/.config/ren-tui/config",
 	"obfuscate_hops = yes writes RNS local_hops_delta (off by default)",
@@ -240,6 +243,8 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	}
 	if net.session_page_busy(&a.session) {
 		draw_page_loading(a, buf, body)
+	} else if a.page_error != "" && a.page_source == "" {
+		draw_page_fail(a, buf, body)
 	} else if a.page_source == "" {
 		ui.buffer_text(buf, body.x + 1, body.y, "No page loaded", t.muted, t.bg)
 		ui.buffer_text(buf, body.x + 1, body.y + 1, "Open a NomadNet node from Network (Enter)", t.muted, t.bg)
@@ -251,7 +256,11 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		}
 		ui.draw_text_block(buf, body, raw_lines, a.page_scroll)
 	} else {
-		paint_doc(buf, body, a.page_doc, a.page_scroll, a.page_link_focus, &a.page_hits)
+		if a.page_error != "" {
+			ui.buffer_text(buf, body.x + 1, body.y, truncate(fmt.tprintf("FAIL  %s", a.page_error), body.w - 2), t.error, t.bg)
+			body = ui.Rect{body.x, body.y + 1, body.w, max(0, body.h - 1)}
+		}
+		paint_doc(buf, body, a.page_doc, a.page_scroll, a.page_link_focus, a.page_field_focus, &a.page_hits)
 	}
 
 	if a.url_editing {
@@ -266,9 +275,7 @@ draw_page_loading :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
 
 	node := a.session.page.node
 	hex := store.hash_hex(node, context.temp_allocator)
-	if len(hex) > 12 {
-		hex = hex[:12]
-	}
+	name := page_node_display_name(a, node)
 	path := a.session.page.path if a.session.page.path != "" else constants.DEFAULT_PAGE_PATH
 	phase := page_phase_label(a.session.page.phase)
 	status := net.session_page_status(&a.session)
@@ -292,13 +299,52 @@ draw_page_loading :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
 	ui.draw_box(buf, panel, "loading", true)
 	inner := ui.rect_inset(panel, 1)
 	ui.buffer_text(buf, inner.x + 1, inner.y, truncate(fmt.tprintf("%s  Fetching NomadNet page", spin), inner.w - 2), t.title, t.bg)
-	ui.buffer_text(buf, inner.x + 1, inner.y + 2, truncate(fmt.tprintf("node  %s", hex), inner.w - 2), t.fg, t.bg)
-	ui.buffer_text(buf, inner.x + 1, inner.y + 3, truncate(fmt.tprintf("path  %s", path), inner.w - 2), t.fg, t.bg)
-	ui.buffer_text(buf, inner.x + 1, inner.y + 4, truncate(fmt.tprintf("via   %s  %s", phase, hops_line), inner.w - 2), t.highlight_fg, t.bg)
-	ui.buffer_text(buf, inner.x + 1, inner.y + 6, truncate(status, inner.w - 2), t.muted, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 2, truncate(name, inner.w - 2), t.fg, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 3, truncate(fmt.tprintf("hash  %s", hex), inner.w - 2), t.muted, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 4, truncate(fmt.tprintf("path  %s", path), inner.w - 2), t.fg, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 5, truncate(fmt.tprintf("via   %s  %s", phase, hops_line), inner.w - 2), t.highlight_fg, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 7, truncate(status, inner.w - 2), t.muted, t.bg)
 	if inner.h > 8 {
 		ui.buffer_text(buf, inner.x + 1, inner.y + inner.h - 1, "Esc cancel   open another node to switch", t.muted, t.bg)
 	}
+}
+
+draw_page_fail :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
+	t := ui.theme()
+	ui.buffer_fill_rect(buf, body.x, body.y, body.w, body.h, ' ', t.fg, t.bg)
+	msg := a.page_error if a.page_error != "" else "page fetch failed"
+	panel_w := min(body.w - 2, 56)
+	panel_h := min(body.h - 2, 9)
+	if panel_w < 24 || panel_h < 5 {
+		ui.buffer_text(buf, body.x + 1, body.y, truncate(fmt.tprintf("FAIL  %s", msg), body.w - 2), t.error, t.bg)
+		ui.buffer_text(buf, body.x + 1, body.y + 1, "g retry URL   Esc Network", t.muted, t.bg)
+		return
+	}
+	px := body.x + max(0, (body.w - panel_w) / 2)
+	py := body.y + max(0, (body.h - panel_h) / 2)
+	panel := ui.Rect{px, py, panel_w, panel_h}
+	ui.draw_box(buf, panel, "failed", false)
+	inner := ui.rect_inset(panel, 1)
+	ui.buffer_text(buf, inner.x + 1, inner.y, "Could not load page", t.error, t.bg)
+	ui.buffer_text(buf, inner.x + 1, inner.y + 2, truncate(msg, inner.w - 2), t.fg, t.bg)
+	if a.page_has_node {
+		hex := store.hash_hex(a.page_node, context.temp_allocator)
+		name := page_node_display_name(a, a.page_node)
+		ui.buffer_text(buf, inner.x + 1, inner.y + 4, truncate(name, inner.w - 2), t.muted, t.bg)
+		ui.buffer_text(buf, inner.x + 1, inner.y + 5, truncate(fmt.tprintf("hash  %s", hex), inner.w - 2), t.muted, t.bg)
+	}
+	if inner.h > 6 {
+		ui.buffer_text(buf, inner.x + 1, inner.y + inner.h - 1, "g retry URL   Esc back to Network", t.muted, t.bg)
+	}
+}
+
+page_node_display_name :: proc(a: ^App, node: [store.HASH_LEN]u8) -> string {
+	for p in a.directory.peers {
+		if p.hash == node && p.display_name != "" {
+			return p.display_name
+		}
+	}
+	return "unknown node"
 }
 
 page_phase_label :: proc(phase: net.Page_Phase) -> string {

@@ -217,40 +217,61 @@ truncate_runes_local :: proc(s: string, max_cols: int) -> string {
 	return ui.truncate_runes(s, max_cols)
 }
 
-refresh_iface_cache :: proc(a: ^App) {
+refresh_iface_cache :: proc(a: ^App) -> bool {
 	infos: [64]net.Iface_Info
 	n := net.session_list_ifaces(&a.session, infos[:])
 	// librns can briefly return an empty list mid-poll. Keep the last good snapshot.
 	if n == 0 {
-		return
+		return false
 	}
-	seen := make(map[string]bool, context.temp_allocator)
+	changed := apply_iface_infos(&a.ifaces, infos[:n])
 	for i in 0 ..< n {
-		e := infos[i]
-		defer {
-			delete(e.name)
-			delete(e.type_n)
-		}
+		delete(infos[i].name)
+		delete(infos[i].type_n)
+	}
+	return changed
+}
+
+// Merge a non-empty iface poll into cache. Partial polls use miss grace instead of instant delete.
+// Order is stable by name so online flips do not reshuffle cards.
+apply_iface_infos :: proc(ifaces: ^[dynamic]Iface_View, infos: []net.Iface_Info) -> bool {
+	if len(infos) == 0 {
+		return false
+	}
+	changed := false
+	seen := make(map[string]bool, context.temp_allocator)
+	for e in infos {
 		seen[e.name] = true
 		found := false
-		for &iface in a.ifaces {
-			if iface.name == e.name {
-				iface.online = e.online
-				iface.enabled = e.enabled
-				iface.rx = e.rx
-				iface.tx = e.tx
-				iface.rx_packets = e.rx_packets
-				iface.tx_packets = e.tx_packets
-				if iface.type_n != e.type_n {
-					delete(iface.type_n)
-					iface.type_n = strings.clone(e.type_n)
-				}
-				found = true
-				break
+		for &iface in ifaces {
+			if iface.name != e.name {
+				continue
 			}
+			if iface.online != e.online ||
+			   iface.enabled != e.enabled ||
+			   iface.rx != e.rx ||
+			   iface.tx != e.tx ||
+			   iface.rx_packets != e.rx_packets ||
+			   iface.tx_packets != e.tx_packets {
+				changed = true
+			}
+			iface.online = e.online
+			iface.enabled = e.enabled
+			iface.rx = e.rx
+			iface.tx = e.tx
+			iface.rx_packets = e.rx_packets
+			iface.tx_packets = e.tx_packets
+			iface.miss_count = 0
+			if iface.type_n != e.type_n {
+				delete(iface.type_n)
+				iface.type_n = strings.clone(e.type_n)
+				changed = true
+			}
+			found = true
+			break
 		}
 		if !found {
-			append(&a.ifaces, Iface_View{
+			append(ifaces, Iface_View{
 				name = strings.clone(e.name),
 				type_n = strings.clone(e.type_n),
 				online = e.online,
@@ -259,32 +280,49 @@ refresh_iface_cache :: proc(a: ^App) {
 				tx = e.tx,
 				rx_packets = e.rx_packets,
 				tx_packets = e.tx_packets,
+				miss_count = 0,
 			})
+			changed = true
 		}
 	}
-	for i := len(a.ifaces) - 1; i >= 0; i -= 1 {
-		if !seen[a.ifaces[i].name] {
-			delete(a.ifaces[i].name)
-			delete(a.ifaces[i].type_n)
-			ordered_remove(&a.ifaces, i)
+	for i := len(ifaces) - 1; i >= 0; i -= 1 {
+		if seen[ifaces[i].name] {
+			continue
 		}
+		ifaces[i].miss_count += 1
+		if ifaces[i].miss_count < IFACE_MISS_LIMIT {
+			continue
+		}
+		delete(ifaces[i].name)
+		delete(ifaces[i].type_n)
+		ordered_remove(ifaces, i)
+		changed = true
 	}
-	sort_ifaces(&a.ifaces)
+	if sort_ifaces_by_name(ifaces) {
+		changed = true
+	}
+	return changed
 }
 
-sort_ifaces :: proc(ifaces: ^[dynamic]Iface_View) {
+sort_ifaces_by_name :: proc(ifaces: ^[dynamic]Iface_View) -> bool {
 	n := len(ifaces)
+	moved := false
 	for i in 0 ..< n {
 		for j in i + 1 ..< n {
-			if iface_rank(ifaces[j]) < iface_rank(ifaces[i]) ||
-			   (iface_rank(ifaces[j]) == iface_rank(ifaces[i]) && ifaces[j].name < ifaces[i].name) {
+			if ifaces[j].name < ifaces[i].name {
 				ifaces[i], ifaces[j] = ifaces[j], ifaces[i]
+				moved = true
 			}
 		}
 	}
+	return moved
 }
 
-// 0 = up, 1 = enabled/offline, 2 = down
+sort_ifaces :: proc(ifaces: ^[dynamic]Iface_View) {
+	_ = sort_ifaces_by_name(ifaces)
+}
+
+// Kept for callers that still rank by state (tests / debug). Cards no longer sort by this.
 iface_rank :: proc(iface: Iface_View) -> int {
 	if iface.online {
 		return 0

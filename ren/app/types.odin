@@ -96,10 +96,13 @@ App :: struct {
 	page_has_node:   bool,
 	page_view_raw:   bool,
 	page_scroll:     int,
+	page_error:      string,
+	page_form:       [dynamic]Page_Form_Input,
+	page_field_focus: int,
 	msg_scroll:      int,
 	status_left:     string,
 	status_right:    string,
-	status_left_buf: [128]u8,
+	status_left_buf: [256]u8,
 	status_hold:     [192]u8,
 	status_hold_len: int,
 	status_until:    time.Tick,
@@ -121,6 +124,9 @@ App :: struct {
 	poll_ticks:          u64,
 }
 
+// How many consecutive polls an interface may be missing before removal.
+IFACE_MISS_LIMIT :: 3
+
 Iface_View :: struct {
 	name:       string,
 	type_n:     string,
@@ -130,4 +136,15 @@ Iface_View :: struct {
 	tx:         u64,
 	rx_packets: u64,
 	tx_packets: u64,
+	miss_count: int,
+}
+
+Page_Form_Input :: struct {
+	kind:    micron.Field_Kind,
+	name:    string,
+	value:   string,
+	label:   string,
+	checked: bool,
+	width:   int,
+	masked:  bool,
 }

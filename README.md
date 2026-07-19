@@ -241,19 +241,29 @@ Optional:
 ```
 make listen LIVE_SECS=30
 man man/ren-tui.1
+make package
+make package-deb
+make package-rpm
+make package-arch
+make package-nix
 ```
+
+Packages write to dist/pkg. Deb needs dpkg-deb, rpm needs rpmbuild, Arch zst needs tar and zstd. Nix uses the flake (nix build). AUR-style builds can use packaging/PKGBUILD.
 
 ### CLI
 
 ```
 ren-tui -h | --help
 ren-tui -v | -V | --version
+ren-tui -d | --daemon
 ren-tui --paths
 ren-tui --config PATH --data-dir PATH -c/--rns-config PATH
 ren-tui --reset | --reset-config | --reset-conversations | --reset-identity
 
 ren-listen -h --help -v --version --paths -t SECONDS -c PATH
 ```
+
+`-d` / `--daemon` detaches on POSIX, keeps the LXMF/NomadNet session alive without a TUI, writes `data_dir/ren-tui.pid`, and logs to `data_dir/daemon.log`. Stop with `kill $(cat ~/.config/ren-tui/ren-tui.pid)`.
 
 Environment:
 

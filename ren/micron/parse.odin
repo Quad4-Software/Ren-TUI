@@ -349,6 +349,18 @@ spans_destroy :: proc(parts: []Span) {
 		if p.url != "" {
 			delete(p.url)
 		}
+		if p.field_name != "" {
+			delete(p.field_name)
+		}
+		if p.field_value != "" {
+			delete(p.field_value)
+		}
+		if p.field_label != "" {
+			delete(p.field_label)
+		}
+		if p.field_spec != "" {
+			delete(p.field_spec)
+		}
 		style_destroy(p.style)
 	}
 }
