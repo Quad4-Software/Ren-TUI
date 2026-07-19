@@ -9,6 +9,7 @@ package app
 
 import "core:fmt"
 
+import "ren:lxmf"
 import "ren:micron"
 import "ren:net"
 import "ren:ui"
@@ -189,6 +190,15 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 					a.net_filter_tick += 1
 					refresh_network_list_if_needed(a)
 				}
+			case 'u', 'U':
+				if a.tab == .Network {
+					try_sync_propagation(a)
+				}
+			case 'm', 'M':
+				if a.tab == .Compose {
+					a.compose_method = lxmf.cycle_send_method(a.compose_method)
+					set_status(a, fmt.tprintf("send method: %s", lxmf.method_label(a.compose_method)), STATUS_HOLD)
+				}
 			case 'i', 'I':
 				if a.tab == .Network || a.tab == .Page {
 					try_identify_node(a)
@@ -218,7 +228,7 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		}
 	case .Tab:
 		if a.tab == .Compose {
-			a.compose_focus = (a.compose_focus + 1) % 2
+			a.compose_focus = (a.compose_focus + 1) % 3
 			return false
 		}
 		if a.tab == .Page && !a.page_view_raw && !a.url_editing && page_focus_total(a) > 0 {
@@ -303,13 +313,22 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			a.iface_scroll += 3
 		}
 	case .Compose:
-		if a.compose_focus == 0 {
+		switch a.compose_focus {
+		case 0:
 			_ = ui.input_handle(&a.compose_to, ev)
-		} else {
+			if ev.kind == .Enter {
+				try_send(a)
+			}
+		case 1:
+			if ev.kind == .Left || ev.kind == .Right || ev.kind == .Enter {
+				a.compose_method = lxmf.cycle_send_method(a.compose_method)
+				set_status(a, fmt.tprintf("send method: %s", lxmf.method_label(a.compose_method)), STATUS_HOLD)
+			}
+		case 2:
 			_ = ui.input_handle(&a.compose_body, ev)
-		}
-		if ev.kind == .Enter {
-			try_send(a)
+			if ev.kind == .Enter {
+				try_send(a)
+			}
 		}
 	case .Config:
 		visible := max(1, a.list_rect.h)

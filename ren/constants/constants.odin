@@ -9,7 +9,7 @@ package constants
 
 // App identity
 APP_NAME :: "ren-tui"
-VERSION :: "0.1.3"
+VERSION :: "0.2.0"
 
 // Config directory under $HOME/.config
 CONFIG_DIR_NAME :: "ren-tui"

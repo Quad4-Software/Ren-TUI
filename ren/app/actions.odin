@@ -7,6 +7,7 @@ User actions like sending mail and fetching NomadNet pages.
 
 package app
 
+import "core:fmt"
 import "core:strings"
 
 import "ren:constants"
@@ -25,13 +26,17 @@ try_fetch_selected_node :: proc(a: ^App) {
 		return
 	}
 	peer := a.directory.peers[idx]
+	if peer.kind == .Propagation {
+		set_selected_propagation_node(a)
+		return
+	}
 	if peer.kind != .Nomad_Node {
 		hex := store.hash_hex(peer.hash, context.temp_allocator)
 		ui.input_clear(&a.compose_to)
 		strings.write_string(&a.compose_to.text, hex)
 		a.compose_to.cursor = len(hex)
 		switch_tab(a, .Compose)
-		a.compose_focus = 1
+		a.compose_focus = 2
 		set_status(a, "compose to selected peer", STATUS_HOLD)
 		return
 	}
@@ -91,12 +96,62 @@ try_send :: proc(a: ^App) {
 		set_status(a, "offline", STATUS_HOLD)
 		return
 	}
-	if net.session_send_begin(&a.session, hash_bytes, "", body, &a.conversations, &a.directory, &a.cfg) {
+	method := a.compose_method
+	if method == .Unknown {
+		method = a.cfg.send_method
+	}
+	if method == .Propagated && !a.cfg.has_propagation_node {
+		set_status(a, "select a propagation node in Network > Propagation first", STATUS_HOLD)
+		return
+	}
+	if net.session_send_begin(&a.session, hash_bytes, "", body, &a.conversations, &a.directory, &a.cfg, method) {
 		ui.input_clear(&a.compose_body)
-		set_status(a, "sending...", STATUS_HOLD)
+		set_status(a, fmt.tprintf("sending (%s)...", lxmf.method_label(method)), STATUS_HOLD)
 		mark_dirty(a)
 	} else {
 		set_status(a, a.session.status if a.session.status != "" else "send failed", STATUS_HOLD)
+	}
+}
+
+set_selected_propagation_node :: proc(a: ^App) {
+	row := a.net_list.selected
+	if row < 0 || row >= len(a.net_peer_idx) {
+		return
+	}
+	idx := a.net_peer_idx[row]
+	if idx < 0 || idx >= len(a.directory.peers) {
+		return
+	}
+	peer := a.directory.peers[idx]
+	if peer.kind != .Propagation {
+		set_status(a, "switch to Propagation view and select a node", STATUS_HOLD)
+		return
+	}
+	store.config_set_propagation_node(&a.cfg, peer.hash)
+	hex := store.hash_hex(peer.hash, context.temp_allocator)
+	if store.config_save(&a.cfg) {
+		set_status(a, fmt.tprintf("propagation node set %s", hex), STATUS_HOLD)
+	} else {
+		set_status(a, fmt.tprintf("propagation node set %s (save failed)", hex), STATUS_HOLD)
+	}
+	refresh_lists(a)
+}
+
+try_sync_propagation :: proc(a: ^App) {
+	if !a.online {
+		set_status(a, "offline", STATUS_HOLD)
+		return
+	}
+	if !a.cfg.has_propagation_node {
+		set_status(a, "select a propagation node first (Enter in Propagation view)", STATUS_HOLD)
+		return
+	}
+	if net.session_sync_begin(&a.session, &a.cfg) {
+		set_status(a, "syncing with propagation node...", STATUS_HOLD)
+		mark_dirty(a)
+	} else {
+		line := net.session_sync_status_line(&a.session, &a.cfg, context.temp_allocator)
+		set_status(a, line if line != "" else "sync failed", STATUS_HOLD)
 	}
 }
 

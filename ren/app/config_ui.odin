@@ -12,6 +12,7 @@ import "core:strconv"
 import "core:strings"
 
 import "ren:constants"
+import "ren:lxmf"
 import "ren:net"
 import "ren:store"
 import "ren:ui"
@@ -39,6 +40,21 @@ config_activate :: proc(a: ^App) {
 		set_status(a, "obfuscate hops toggled (Save writes RNS local_hops_delta)", STATUS_HOLD)
 	case .Download_Dir:
 		start_config_edit(a, a.cfg.download_dir if a.cfg.download_dir != "" else store.config_download_dir(&a.cfg, context.temp_allocator))
+	case .Propagation_Node:
+		if a.cfg.has_propagation_node {
+			store.config_clear_propagation_node(&a.cfg)
+			set_status(a, "propagation node cleared (Save to persist)", STATUS_HOLD)
+		} else {
+			set_status(a, "select a node in Network > Propagation (Enter)", STATUS_HOLD)
+		}
+		refresh_lists(a)
+	case .Try_Prop_On_Fail:
+		a.cfg.try_propagation_on_fail = !a.cfg.try_propagation_on_fail
+		refresh_lists(a)
+	case .Send_Method:
+		a.cfg.send_method = lxmf.cycle_send_method(a.cfg.send_method)
+		a.compose_method = a.cfg.send_method
+		refresh_lists(a)
 	case .Restart:
 		restart_stack(a)
 	case .Save:
@@ -95,7 +111,8 @@ apply_config_edit :: proc(a: ^App) {
 	case .Download_Dir:
 		delete(a.cfg.download_dir)
 		a.cfg.download_dir = strings.clone(val)
-	case .Auto_Announce, .Color, .Theme, .Mouse, .Obfuscate_Hops, .Restart, .Save, .Count:
+	case .Auto_Announce, .Color, .Theme, .Mouse, .Obfuscate_Hops,
+	     .Propagation_Node, .Try_Prop_On_Fail, .Send_Method, .Restart, .Save, .Count:
 	}
 	a.config_editing = false
 	ui.input_clear(&a.config_edit)
@@ -137,6 +154,7 @@ cycle_theme :: proc(a: ^App) {
 apply_runtime_config :: proc(a: ^App) {
 	net.session_set_display_name(&a.session, a.cfg.display_name)
 	net.session_set_announce_interval(&a.session, a.cfg.announce_interval_sec)
+	a.compose_method = a.cfg.send_method
 	config_apply_theme(&a.cfg)
 	update_status(a)
 }

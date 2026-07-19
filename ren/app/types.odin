@@ -10,6 +10,7 @@ package app
 import "core:time"
 
 import "ren:constants"
+import "ren:lxmf"
 import "ren:micron"
 import "ren:net"
 import "ren:store"
@@ -54,6 +55,9 @@ Config_Row :: enum {
 	Mouse,
 	Obfuscate_Hops,
 	Download_Dir,
+	Propagation_Node,
+	Try_Prop_On_Fail,
+	Send_Method,
 	Restart,
 	Save,
 	Count,
@@ -76,6 +80,7 @@ App :: struct {
 	compose_to:      ui.Input_State,
 	compose_body:    ui.Input_State,
 	compose_focus:   int,
+	compose_method:  lxmf.Method,
 	config_edit:     ui.Input_State,
 	config_editing:  bool,
 	url_edit:        ui.Input_State,

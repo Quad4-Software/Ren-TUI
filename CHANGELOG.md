@@ -2,12 +2,15 @@
 
 New work goes under the `[draft]` section only. Do not edit `[released]` sections after a tag ships.
 
-## 0.1.3 - 2026-07-19 [draft]
+## 0.2.0 - 2026-07-19 [draft]
 
 - Fix inbound LXMF from Python clients (opportunistic try-both unpack, refresh conversations on receive)
 - Python LXMF fixture interop feeds packed bytes into Odin message_unpack
 - Keep Network selection and scroll on the same peer when LXMF NomadNet or propagation announces reorder the list
 - Loading panel clips wide names and emojis so the outer box borders stay intact
+- Propagation node support: select from Network > Propagation, show selected node and sync status
+- Compose send methods Direct / Opportunistic / Propagate, plus try_propagation_on_send_fail
+- librns PacketSend and DestinationEncrypt for opportunistic and propagate delivery
 
 ## 0.1.2 - 2026-07-19 [released]
 

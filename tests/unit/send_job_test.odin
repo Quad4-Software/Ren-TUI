@@ -16,10 +16,14 @@ import "ren:store"
 import rns "rns:rns"
 
 Fake_Send :: struct {
-	opened:  int,
-	sent:    int,
-	closed:  int,
-	fail_open: bool,
+	opened:     int,
+	sent:       int,
+	closed:     int,
+	packets:    int,
+	fail_open:  bool,
+	fail_until: int,
+	packet_ok:  bool,
+	encrypt_ok: bool,
 }
 
 fake_path_ensure :: proc(user: rawptr, dest: [store.HASH_LEN]u8) -> bool {
@@ -32,7 +36,7 @@ fake_link_open :: proc(user: rawptr, dest: []u8) -> (link: rns.Link, link_id: [s
 	_ = dest
 	f := cast(^Fake_Send)user
 	f.opened += 1
-	if f.fail_open {
+	if f.fail_open || (f.fail_until > 0 && f.opened <= f.fail_until) {
 		return 0, {}, false
 	}
 	return 1, {}, true
@@ -50,6 +54,25 @@ fake_link_send :: proc(user: rawptr, link: rns.Link, data: []u8) -> bool {
 	f := cast(^Fake_Send)user
 	f.sent += 1
 	return true
+}
+
+fake_packet_send :: proc(user: rawptr, dest: []u8, data: []u8) -> bool {
+	_ = dest
+	_ = data
+	f := cast(^Fake_Send)user
+	f.packets += 1
+	return f.packet_ok
+}
+
+fake_encrypt :: proc(user: rawptr, dest: []u8, plaintext: []u8) -> ([]u8, bool) {
+	_ = dest
+	f := cast(^Fake_Send)user
+	if !f.encrypt_ok {
+		return nil, false
+	}
+	out := make([]u8, len(plaintext))
+	copy(out, plaintext)
+	return out, true
 }
 
 setup_send_session :: proc(s: ^net.Session, fake: ^Fake_Send) -> bool {

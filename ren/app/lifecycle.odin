@@ -40,6 +40,7 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	ui.list_init(&a.config_list)
 	ui.input_init(&a.compose_to)
 	ui.input_init(&a.compose_body)
+	a.compose_method = a.cfg.send_method
 	ui.input_init(&a.config_edit)
 	ui.input_init(&a.url_edit)
 	ui.input_init(&a.net_search)
@@ -196,11 +197,11 @@ footer_keybinds :: proc(a: ^App) -> string {
 	case .Conversations:
 		return "/ search  Up/Dn list  PgUp/Dn msgs"
 	case .Network:
-		return "l/n/p views  / search  Enter open  i id"
+		return "l/n/p views  / search  Enter set/open  u sync"
 	case .Interfaces:
 		return "Up/Dn scroll"
 	case .Compose:
-		return "Tab fields  Enter send"
+		return "Tab fields  m method  Enter send"
 	case .Config:
 		return "Enter edit/toggle  Up/Dn"
 	case .Guide:
