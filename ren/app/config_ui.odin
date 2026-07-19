@@ -37,6 +37,8 @@ config_activate :: proc(a: ^App) {
 		a.cfg.obfuscate_hops = !a.cfg.obfuscate_hops
 		refresh_lists(a)
 		set_status(a, "obfuscate hops toggled (Save writes RNS local_hops_delta)", STATUS_HOLD)
+	case .Download_Dir:
+		start_config_edit(a, a.cfg.download_dir if a.cfg.download_dir != "" else store.config_download_dir(&a.cfg, context.temp_allocator))
 	case .Restart:
 		restart_stack(a)
 	case .Save:
@@ -90,6 +92,9 @@ apply_config_edit :: proc(a: ^App) {
 			ui.input_clear(&a.config_edit)
 			return
 		}
+	case .Download_Dir:
+		delete(a.cfg.download_dir)
+		a.cfg.download_dir = strings.clone(val)
 	case .Auto_Announce, .Color, .Theme, .Mouse, .Obfuscate_Hops, .Restart, .Save, .Count:
 	}
 	a.config_editing = false

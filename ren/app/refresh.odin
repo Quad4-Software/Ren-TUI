@@ -10,6 +10,7 @@ package app
 import "core:fmt"
 import "core:strings"
 
+import "ren:constants"
 import "ren:net"
 import "ren:store"
 import "ren:ui"
@@ -61,6 +62,8 @@ refresh_config_list :: proc(a: ^App) {
 	ui.list_push(&a.config_list, fmt.tprintf("Theme: %s", a.cfg.theme_name))
 	ui.list_push(&a.config_list, fmt.tprintf("Mouse: %s", "yes" if a.cfg.mouse else "no"))
 	ui.list_push(&a.config_list, fmt.tprintf("Obfuscate hops: %s", "yes" if a.cfg.obfuscate_hops else "no"))
+	dl := a.cfg.download_dir if a.cfg.download_dir != "" else fmt.tprintf("(default %s/%s)", a.cfg.data_dir, constants.DOWNLOADS_DIR)
+	ui.list_push(&a.config_list, fmt.tprintf("Download dir: %s", dl))
 	ui.list_push(&a.config_list, "Restart Network Stack")
 	ui.list_push(&a.config_list, "Save config")
 	a.config_list.selected = clamp(prev_cfg, 0, len(a.config_list.items) - 1)
@@ -168,7 +171,7 @@ refresh_network_list :: proc(a: ^App, prev_sel, prev_scroll: int) {
 		if sc, ok := peer.stamp_cost.?; ok {
 			cost = fmt.tprintf(" cost=%d", sc)
 		}
-		ui.list_push(&a.net_list, fmt.tprintf("  %s  %s%s hops=%d", name, hex, cost, peer.hops))
+		ui.list_push(&a.net_list, fmt.tprintf("  %s  %s%s %s", name, hex, cost, store.format_peer_hops_peer(peer)))
 		append(&a.net_peer_idx, i)
 		shown += 1
 	}
@@ -217,6 +220,10 @@ truncate_runes_local :: proc(s: string, max_cols: int) -> string {
 refresh_iface_cache :: proc(a: ^App) {
 	infos: [64]net.Iface_Info
 	n := net.session_list_ifaces(&a.session, infos[:])
+	// librns can briefly return an empty list mid-poll. Keep the last good snapshot.
+	if n == 0 {
+		return
+	}
 	seen := make(map[string]bool, context.temp_allocator)
 	for i in 0 ..< n {
 		e := infos[i]

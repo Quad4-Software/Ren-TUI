@@ -12,16 +12,21 @@ import "core:os"
 import "core:time"
 
 import "ren:cli"
+import "ren:crash"
 import "ren:net"
 import "ren:store"
 import "ren:version"
 
 main :: proc() {
+	crash.install()
+	context.assertion_failure_proc = crash.assertion_failure
+
 	opts, err := cli.parse_args(os.args[1:], true)
 	if err != "" {
 		fmt.eprintf("ren-listen: %s\n", err)
 		cli.print_help_listen()
 		cli.options_destroy(&opts)
+		crash.close()
 		os.exit(2)
 	}
 
@@ -31,6 +36,7 @@ main :: proc() {
 	if handled, code := cli.run_utility_actions(&cfg, &opts); handled {
 		store.config_destroy_strings(&cfg)
 		cli.options_destroy(&opts)
+		crash.close()
 		os.exit(code)
 	}
 
@@ -87,6 +93,7 @@ main :: proc() {
 	store.conversations_destroy(&conversations)
 	store.config_destroy_strings(&cfg)
 	cli.options_destroy(&opts)
+	crash.close()
 	os.exit(exit_code)
 }
 

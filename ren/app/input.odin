@@ -33,7 +33,7 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			mark_dirty(a)
 		}
 	}
-	if a.tab == .Page || net.session_page_busy(&a.session) {
+	if net.session_page_busy(&a.session) {
 		mark_dirty(a)
 	}
 	a.poll_ticks += 1
@@ -183,6 +183,10 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			case 's', 'S':
 				if a.tab == .Page {
 					page_toggle_raw(a)
+				}
+			case 'd', 'D':
+				if a.tab == .Page {
+					page_download(a)
 				}
 			case 'g', 'G':
 				if a.tab == .Page || a.tab == .Network {

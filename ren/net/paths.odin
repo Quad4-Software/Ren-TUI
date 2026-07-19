@@ -80,6 +80,18 @@ path_hot_remember :: proc(pf: ^Path_Finder, dest: [store.HASH_LEN]u8, hops: u8) 
 	pf.hot[oldest] = Path_Hot{hash = dest, hops = hops, expires = expires, used = now, valid = true}
 }
 
+// Push known path hops into the directory so Network list can show real values.
+path_hot_sync_directory :: proc(pf: ^Path_Finder, directory: ^store.Directory) {
+	if directory == nil {
+		return
+	}
+	for e in pf.hot {
+		if e.valid {
+			store.directory_apply_path_hops(directory, e.hash, e.hops)
+		}
+	}
+}
+
 path_hot_invalidate :: proc(pf: ^Path_Finder, dest: [store.HASH_LEN]u8) {
 	for i in 0 ..< len(pf.hot) {
 		e := &pf.hot[i]

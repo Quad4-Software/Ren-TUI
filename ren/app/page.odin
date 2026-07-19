@@ -8,6 +8,8 @@ NomadNet page fetch sanitize parse and path checks.
 package app
 
 import "core:fmt"
+import "core:os"
+import "core:path/filepath"
 import "core:strings"
 import "core:time"
 
@@ -155,9 +157,9 @@ page_fetch :: proc(
 		set_status(a, "bad page path", STATUS_HOLD)
 		return
 	}
+	// Cancel in-flight fetch so opening another node mid-link replaces the job.
 	if net.session_page_busy(&a.session) {
-		set_status(a, "page fetch already in progress", STATUS_HOLD)
-		return
+		net.session_page_cancel(&a.session)
 	}
 	payload := micron.encode_request_data(req)
 	defer delete(payload)
@@ -358,4 +360,75 @@ page_click_link_at :: proc(a: ^App, x, y: int) -> bool {
 		}
 	}
 	return false
+}
+
+// Basename for saving a fetched page. Always ends with .mu when possible.
+page_download_basename :: proc(page_path: string, allocator := context.allocator) -> string {
+	p := page_path
+	if bt := strings.index_byte(p, '`'); bt >= 0 {
+		p = p[:bt]
+	}
+	p = strings.trim_space(p)
+	if p == "" || strings.contains(p, "..") {
+		return strings.clone("index.mu", allocator)
+	}
+	base := filepath.base(p)
+	if base == "" || base == "." || base == "/" || base == "\\" {
+		return strings.clone("index.mu", allocator)
+	}
+	if strings.contains(base, "/") || strings.contains(base, "\\") {
+		return strings.clone("index.mu", allocator)
+	}
+	for i in 0 ..< len(base) {
+		c := base[i]
+		switch c {
+		case 'a' ..= 'z', 'A' ..= 'Z', '0' ..= '9', '.', '_', '-', '~':
+		case:
+			return strings.clone("index.mu", allocator)
+		}
+	}
+	lower := strings.to_lower(base, context.temp_allocator)
+	if strings.has_suffix(lower, ".mu") {
+		return strings.clone(base, allocator)
+	}
+	return strings.concatenate({base, ".mu"}, allocator)
+}
+
+page_download :: proc(a: ^App) {
+	if a.page_source == "" {
+		set_status(a, "no page loaded", STATUS_HOLD)
+		return
+	}
+	name := page_download_basename(a.page_path if a.page_path != "" else constants.DEFAULT_PAGE_PATH)
+	defer delete(name)
+	dir := store.config_download_dir(&a.cfg)
+	defer delete(dir)
+	out, ok := page_write_download(dir, name, a.page_source)
+	if !ok {
+		set_status(a, "page download failed", STATUS_HOLD)
+		return
+	}
+	defer delete(out)
+	set_status(a, fmt.tprintf("saved %s", out), STATUS_HOLD)
+}
+
+page_write_download :: proc(dir, filename, content: string, allocator := context.allocator) -> (path: string, ok: bool) {
+	if dir == "" || filename == "" {
+		return "", false
+	}
+	if os.make_directory_all(dir) != nil && !os.exists(dir) {
+		return "", false
+	}
+	final_path, _ := filepath.join({dir, filename}, allocator)
+	tmp_path := strings.concatenate({final_path, ".tmp"}, context.temp_allocator)
+	if os.write_entire_file(tmp_path, transmute([]u8)content) != nil {
+		delete(final_path)
+		return "", false
+	}
+	if os.rename(tmp_path, final_path) != nil {
+		_ = os.remove(tmp_path)
+		delete(final_path)
+		return "", false
+	}
+	return final_path, true
 }

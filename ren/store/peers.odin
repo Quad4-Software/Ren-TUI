@@ -59,7 +59,7 @@ peers_encode :: proc(peers: []Peer) -> ([]u8, bool) {
 	defer lxmf.writer_destroy(&w)
 	lxmf.write_array_header(&w, len(peers))
 	for p in peers {
-		lxmf.write_array_header(&w, 7)
+		lxmf.write_array_header(&w, 8)
 		h := p.hash
 		ih := p.identity_hash
 		lxmf.write_bin(&w, h[:])
@@ -73,6 +73,7 @@ peers_encode :: proc(peers: []Peer) -> ([]u8, bool) {
 		}
 		lxmf.write_int(&w, i64(p.hops))
 		lxmf.write_f64(&w, p.last_heard)
+		lxmf.write_bool(&w, p.hops_known)
 	}
 	out := make([]u8, len(w.buf))
 	copy(out, w.buf[:])
@@ -130,6 +131,15 @@ peers_decode :: proc(data: []u8) -> ([dynamic]Peer, bool) {
 		}
 		if fh, ok := lxmf.as_f64(item.array[6]); ok {
 			p.last_heard = fh
+		}
+		if len(item.array) >= 8 {
+			if item.array[7].kind == .Bool {
+				p.hops_known = item.array[7].b
+			} else {
+				p.hops_known = p.hops > 0
+			}
+		} else {
+			p.hops_known = p.hops > 0
 		}
 		append(&out, p)
 	}
@@ -204,6 +214,7 @@ peers_spill_upsert :: proc(path: string, peer: Peer) -> bool {
 			p.kind = peer.kind
 			p.stamp_cost = peer.stamp_cost
 			p.hops = peer.hops
+			p.hops_known = peer.hops_known
 			p.last_heard = peer.last_heard
 			found = true
 			break
@@ -216,6 +227,7 @@ peers_spill_upsert :: proc(path: string, peer: Peer) -> bool {
 			display_name = strings.clone(peer.display_name),
 			stamp_cost = peer.stamp_cost,
 			hops = peer.hops,
+			hops_known = peer.hops_known,
 			last_heard = peer.last_heard,
 			kind = peer.kind,
 		})
@@ -260,6 +272,7 @@ directory_promote_from_spill :: proc(d: ^Directory, dest: [HASH_LEN]u8) -> bool 
 		display_name = strings.clone(p.display_name),
 		stamp_cost = p.stamp_cost,
 		hops = p.hops,
+		hops_known = p.hops_known,
 		last_heard = p.last_heard,
 		kind = p.kind,
 	})
