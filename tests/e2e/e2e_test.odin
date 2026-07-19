@@ -16,6 +16,7 @@ import "ren:lxmf"
 import "ren:micron"
 import "ren:store"
 import "ren:ui"
+import "ren:app"
 
 @(test)
 test_e2e_identity_pack_unpack_verify :: proc(t: ^testing.T) {
@@ -99,7 +100,7 @@ test_e2e_draw_widgets_into_buffer :: proc(t: ^testing.T) {
 
 	doc := micron.parse("> Page\nbody")
 	defer micron.doc_destroy(&doc)
-	micron.draw_doc(&buf, ui.Rect{2, 2, 20, 5}, doc, 0, -1, nil)
+	app.paint_doc(&buf, ui.Rect{2, 2, 20, 5}, doc, 0, -1, nil)
 	heading := ui.buffer_at(&buf, 4, 2)
 	testing.expect(t, heading != nil)
 	testing.expect_value(t, heading.ch, 'P')
@@ -119,7 +120,7 @@ test_e2e_config_theme_apply_roundtrip :: proc(t: ^testing.T) {
 	cfg.data_dir = strings.clone(base)
 	cfg.config_path, _ = filepath.join({base, "config"})
 	cfg.theme_name = strings.clone("slate")
-	ui.theme_hex_set(&cfg.theme_hex, "accent", "#aabbcc")
+	store.theme_overrides_set(&cfg.theme_overrides, "accent", "#aabbcc")
 	testing.expect(t, store.config_save(&cfg))
 	defer store.config_destroy_strings(&cfg)
 
@@ -130,7 +131,9 @@ test_e2e_config_theme_apply_roundtrip :: proc(t: ^testing.T) {
 	loaded.config_path, _ = filepath.join({base, "config"})
 	store.config_load(&loaded)
 	defer store.config_destroy_strings(&loaded)
-	store.config_apply_theme(&loaded)
+	ui.apply_theme_hex(loaded.theme_name, ui.Theme_Hex{
+		accent = loaded.theme_overrides.accent,
+	})
 	th := ui.theme()
 	testing.expect_value(t, th.name, "slate")
 	testing.expect_value(t, th.accent.r, u8(0xaa))

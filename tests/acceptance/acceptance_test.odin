@@ -15,7 +15,6 @@ import "core:testing"
 import "ren:constants"
 import "ren:lxmf"
 import "ren:store"
-import "ren:ui"
 
 @(test)
 test_acceptance_config_theme_persist :: proc(t: ^testing.T) {
@@ -35,7 +34,7 @@ test_acceptance_config_theme_persist :: proc(t: ^testing.T) {
 	cfg.display_name = strings.clone("TestPeer")
 	cfg.color_mode = strings.clone("256")
 	cfg.theme_name = strings.clone("slate")
-	ui.theme_hex_set(&cfg.theme_hex, "accent", "#5a96be")
+	store.theme_overrides_set(&cfg.theme_overrides, "accent", "#5a96be")
 	cfg.auto_announce = false
 	cfg.announce_interval_sec = 120
 	cfg.mouse = false
@@ -54,7 +53,7 @@ test_acceptance_config_theme_persist :: proc(t: ^testing.T) {
 	testing.expect_value(t, loaded.display_name, "TestPeer")
 	testing.expect_value(t, loaded.color_mode, "256")
 	testing.expect_value(t, loaded.theme_name, "slate")
-	testing.expect_value(t, loaded.theme_hex.accent, "#5a96be")
+	testing.expect_value(t, loaded.theme_overrides.accent, "#5a96be")
 	testing.expect(t, !loaded.auto_announce)
 	testing.expect_value(t, loaded.announce_interval_sec, 120)
 	testing.expect(t, !loaded.mouse)

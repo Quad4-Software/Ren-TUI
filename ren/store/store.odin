@@ -17,7 +17,6 @@ import "core:time"
 
 import "ren:constants"
 import "ren:lxmf"
-import "ren:ui"
 
 HASH_LEN :: lxmf.HASH_LEN
 
@@ -73,7 +72,7 @@ Config :: struct {
 	mouse:                bool,
 	color_mode:           string,
 	theme_name:           string,
-	theme_hex:            ui.Theme_Hex,
+	theme_overrides:      Theme_Overrides,
 }
 
 user_home_dir :: proc(allocator := context.allocator) -> string {
@@ -123,7 +122,7 @@ config_default :: proc(allocator := context.allocator) -> Config {
 		mouse = constants.DEFAULT_MOUSE,
 		color_mode = strings.clone(constants.DEFAULT_COLOR_MODE, allocator),
 		theme_name = strings.clone(constants.DEFAULT_THEME, allocator),
-		theme_hex = {},
+		theme_overrides = {},
 	}
 }
 
@@ -218,7 +217,7 @@ config_load :: proc(c: ^Config) {
 		case "ui":
 			config_apply_ui(c, key, val)
 		case "theme":
-			ui.theme_hex_set(&c.theme_hex, key, val)
+			theme_overrides_set(&c.theme_overrides, key, val)
 		}
 	}
 }
@@ -271,10 +270,6 @@ config_apply_ui :: proc(c: ^Config, key, val: string) {
 	}
 }
 
-config_apply_theme :: proc(c: ^Config) {
-	ui.apply_theme_hex(c.theme_name, c.theme_hex)
-}
-
 config_destroy_strings :: proc(c: ^Config) {
 	delete(c.home)
 	delete(c.display_name)
@@ -284,7 +279,7 @@ config_destroy_strings :: proc(c: ^Config) {
 	delete(c.config_path)
 	delete(c.color_mode)
 	delete(c.theme_name)
-	ui.theme_hex_destroy(&c.theme_hex)
+	theme_overrides_destroy(&c.theme_overrides)
 }
 
 parse_bool :: proc(val: string, fallback: bool) -> bool {
@@ -410,7 +405,7 @@ config_sync_rns_local_hops_delta :: proc(c: ^Config) -> bool {
 
 @(private)
 config_theme_block :: proc(c: ^Config) -> string {
-	if !ui.theme_hex_has_any(c.theme_hex) {
+	if !theme_overrides_has_any(c.theme_overrides) {
 		return ""
 	}
 	b: strings.Builder
@@ -425,7 +420,7 @@ config_theme_block :: proc(c: ^Config) -> string {
 		strings.write_string(b, val)
 		strings.write_string(b, "\n")
 	}
-	ov := c.theme_hex
+	ov := c.theme_overrides
 	write_ov(&b, "bg", ov.bg)
 	write_ov(&b, "fg", ov.fg)
 	write_ov(&b, "muted", ov.muted)

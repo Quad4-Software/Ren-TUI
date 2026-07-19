@@ -101,7 +101,8 @@ conversations_encode_peer :: proc(conv: ^Conversation) -> ([]u8, bool) {
 	lxmf.writer_init(&w)
 	defer lxmf.writer_destroy(&w)
 
-	lxmf.write_array_header(&w, 4)
+	lxmf.write_array_header(&w, 5)
+	lxmf.write_int(&w, i64(constants.CONVERSATIONS_SCHEMA_VERSION))
 	lxmf.write_bin(&w, conv.peer_hash[:])
 	lxmf.write_str(&w, conv.title)
 	lxmf.write_int(&w, i64(conv.unread))
@@ -133,17 +134,31 @@ conversations_decode_file :: proc(c: ^Conversations, peer: [HASH_LEN]u8, data: [
 	}
 	defer lxmf.value_destroy(&root)
 
+	title_i := 1
+	unread_i := 2
+	msgs_i := 3
+	if len(root.array) >= 5 {
+		if ver, vok := lxmf.as_int(root.array[0]); vok {
+			if ver < 1 || ver > i64(constants.CONVERSATIONS_SCHEMA_VERSION) {
+				return false
+			}
+			title_i = 2
+			unread_i = 3
+			msgs_i = 4
+		}
+	}
+
 	title := ""
-	if root.array[1].kind == .Str {
-		title = root.array[1].str
-	} else if b, ok := lxmf.as_bytes(root.array[1]); ok {
+	if root.array[title_i].kind == .Str {
+		title = root.array[title_i].str
+	} else if b, ok := lxmf.as_bytes(root.array[title_i]); ok {
 		title = string(b)
 	}
 	unread: int
-	if n, ok := lxmf.as_int(root.array[2]); ok {
+	if n, ok := lxmf.as_int(root.array[unread_i]); ok {
 		unread = int(n)
 	}
-	msgs_v := root.array[3]
+	msgs_v := root.array[msgs_i]
 	if msgs_v.kind != .Array {
 		return false
 	}

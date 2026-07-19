@@ -252,7 +252,7 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		}
 		ui.draw_text_block(buf, body, raw_lines, a.page_scroll)
 	} else {
-		micron.draw_doc(buf, body, a.page_doc, a.page_scroll, a.page_link_focus, &a.page_hits)
+		paint_doc(buf, body, a.page_doc, a.page_scroll, a.page_link_focus, &a.page_hits)
 	}
 
 	if a.url_editing {

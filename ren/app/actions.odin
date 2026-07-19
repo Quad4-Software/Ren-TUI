@@ -10,6 +10,7 @@ package app
 import "core:strings"
 
 import "ren:constants"
+import "ren:lxmf"
 import "ren:net"
 import "ren:store"
 import "ren:ui"
@@ -81,7 +82,7 @@ try_send :: proc(a: ^App) {
 		set_status(a, "need 32 hex address and message", STATUS_HOLD)
 		return
 	}
-	hash_bytes, ok := decode_hex32(to)
+	hash_bytes, ok := lxmf.decode_hex32(to)
 	if !ok {
 		set_status(a, "bad LXMF address", STATUS_HOLD)
 		return
@@ -90,14 +91,12 @@ try_send :: proc(a: ^App) {
 		set_status(a, "offline", STATUS_HOLD)
 		return
 	}
-	if net.session_send_direct(&a.session, hash_bytes, "", body, &a.conversations, &a.directory, &a.cfg) {
+	if net.session_send_begin(&a.session, hash_bytes, "", body, &a.conversations, &a.directory, &a.cfg) {
 		ui.input_clear(&a.compose_body)
-		refresh_lists(a)
-		select_conversation(a, hash_bytes)
-		a.tab = .Conversations
-		set_status(a, "sent + re-announced", STATUS_HOLD)
+		set_status(a, "sending...", STATUS_HOLD)
+		mark_dirty(a)
 	} else {
-		set_status(a, a.session.status, STATUS_HOLD)
+		set_status(a, a.session.status if a.session.status != "" else "send failed", STATUS_HOLD)
 	}
 }
 
@@ -123,32 +122,4 @@ open_lxmf_peer :: proc(a: ^App, peer: [store.HASH_LEN]u8) {
 	a.compose_to.cursor = len(hex)
 	a.tab = .Conversations
 	set_status(a, "opened LXMF conversation", STATUS_HOLD)
-}
-
-decode_hex32 :: proc(s: string) -> ([store.HASH_LEN]u8, bool) {
-	if len(s) != 32 {
-		return {}, false
-	}
-	out: [store.HASH_LEN]u8
-	for i in 0 ..< store.HASH_LEN {
-		hi := hex_nibble(s[i * 2])
-		lo := hex_nibble(s[i * 2 + 1])
-		if hi < 0 || lo < 0 {
-			return {}, false
-		}
-		out[i] = u8(hi << 4 | lo)
-	}
-	return out, true
-}
-
-hex_nibble :: proc(c: u8) -> int {
-	switch c {
-	case '0' ..= '9':
-		return int(c - '0')
-	case 'a' ..= 'f':
-		return int(c - 'a' + 10)
-	case 'A' ..= 'F':
-		return int(c - 'A' + 10)
-	}
-	return -1
 }

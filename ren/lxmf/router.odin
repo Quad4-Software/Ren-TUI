@@ -9,16 +9,12 @@ package lxmf
 
 import "core:strings"
 
-Delivery_Callback :: #type proc(msg: ^Message, user: rawptr)
-
 Router :: struct {
-	material:      Identity_Material,
-	display_name:  string,
-	stamp_cost:    Maybe(i64),
-	delivery_hash: [HASH_LEN]u8,
-	on_delivery:   Delivery_Callback,
-	user:          rawptr,
-	outbound:      [dynamic]Message,
+	material:        Identity_Material,
+	display_name:    string,
+	stamp_cost:      Maybe(i64),
+	delivery_hash:   [HASH_LEN]u8,
+	outbound:        [dynamic]Message,
 	inbound_tickets: [dynamic][TICKET_LENGTH]u8,
 }
 
@@ -40,11 +36,6 @@ router_destroy :: proc(r: ^Router) {
 	delete(r.outbound)
 	delete(r.inbound_tickets)
 	r^ = {}
-}
-
-router_set_callback :: proc(r: ^Router, cb: Delivery_Callback, user: rawptr) {
-	r.on_delivery = cb
-	r.user = user
 }
 
 router_set_stamp_cost :: proc(r: ^Router, cost: Maybe(i64)) {
@@ -98,20 +89,4 @@ router_validate_inbound_stamp :: proc(r: ^Router, m: ^Message) -> bool {
 	mid := m.message_id
 	ok, _ := validate_message_stamp(m.stamp, mid[:], required, tickets)
 	return ok
-}
-
-router_handle_inbound :: proc(r: ^Router, data: []u8, method: Method = .Direct) {
-	m, ok := message_unpack(data, method)
-	if !ok {
-		return
-	}
-	if !router_validate_inbound_stamp(r, &m) {
-		message_destroy(&m)
-		return
-	}
-	if r.on_delivery != nil {
-		r.on_delivery(&m, r.user)
-	} else {
-		message_destroy(&m)
-	}
 }

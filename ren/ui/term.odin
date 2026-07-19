@@ -26,7 +26,7 @@ Term :: struct {
 term_init :: proc(t: ^Term, preferred_color := "", enable_mouse := true) -> bool {
 	caps_init(preferred_color)
 	if !enable_mouse {
-		caps.mouse = false
+		caps_ptr().mouse = false
 	}
 	t^ = {}
 	strings.builder_init(&t.out)
@@ -34,16 +34,17 @@ term_init :: proc(t: ^Term, preferred_color := "", enable_mouse := true) -> bool
 		return false
 	}
 	t.raw = true
-	if caps.alt_screen {
+	c := caps_ptr()
+	if c.alt_screen {
 		term_enter_alt(t)
 	} else {
 		strings.write_string(&t.out, "\x1b[2J\x1b[H")
 		term_flush(t)
 	}
-	if caps.cursor_ctl {
+	if c.cursor_ctl {
 		term_hide_cursor(t)
 	}
-	if caps.mouse {
+	if c.mouse {
 		strings.write_string(&t.out, "\x1b[?1000h\x1b[?1002h\x1b[?1006h")
 		term_flush(t)
 	}
@@ -52,15 +53,16 @@ term_init :: proc(t: ^Term, preferred_color := "", enable_mouse := true) -> bool
 }
 
 term_close :: proc(t: ^Term) {
+	c := caps_ptr()
 	if t.raw {
-		if caps.mouse {
+		if c.mouse {
 			strings.write_string(&t.out, "\x1b[?1006l\x1b[?1002l\x1b[?1000l")
 			term_flush(t)
 		}
-		if caps.cursor_ctl {
+		if c.cursor_ctl {
 			term_show_cursor(t)
 		}
-		if caps.alt_screen {
+		if c.alt_screen {
 			term_leave_alt(t)
 		} else {
 			strings.write_string(&t.out, "\x1b[0m\x1b[2J\x1b[H")
@@ -117,7 +119,7 @@ term_flush :: proc(t: ^Term) {
 
 @(private)
 write_sgr :: proc(b: ^strings.Builder, fg, bg: Color, style: Style) {
-	switch caps.mode {
+	switch caps_ptr().mode {
 	case .None:
 		strings.write_string(b, "\x1b[0m")
 		if .Bold in style {
@@ -199,40 +201,120 @@ term_present :: proc(t: ^Term, buf: ^Buffer) {
 		buffer_resize(buf, t.width, t.height)
 	}
 
+	use_diff := t.has_prev && t.prev.width == buf.width && t.prev.height == buf.height
+
 	strings.builder_reset(&t.out)
-	strings.write_string(&t.out, "\x1b[H")
+	if !use_diff {
+		strings.write_string(&t.out, "\x1b[H")
+	}
 
 	last_fg := Color{255, 255, 255}
 	last_bg := Color{0, 0, 0}
 	last_style: Style
-	first := true
+	sgr_valid := false
+	cursor_x := -1
+	cursor_y := -1
 
 	for y in 0 ..< buf.height {
 		for x in 0 ..< buf.width {
-			cell := buf.cells[y * buf.width + x]
-			if first || cell.fg != last_fg || cell.bg != last_bg || cell.style != last_style {
+			idx := y * buf.width + x
+			cell := buf.cells[idx]
+			if use_diff {
+				prev := t.prev.cells[idx]
+				if cell.ch == prev.ch && cell.fg == prev.fg && cell.bg == prev.bg && cell.style == prev.style {
+					continue
+				}
+				if cursor_x != x || cursor_y != y {
+					fmt.sbprintf(&t.out, "\x1b[%d;%dH", y + 1, x + 1)
+					cursor_x = x
+					cursor_y = y
+					sgr_valid = false
+				}
+			}
+			if !sgr_valid || cell.fg != last_fg || cell.bg != last_bg || cell.style != last_style {
 				write_sgr(&t.out, cell.fg, cell.bg, cell.style)
 				last_fg = cell.fg
 				last_bg = cell.bg
 				last_style = cell.style
-				first = false
+				sgr_valid = true
 			}
 			ch := sanitize_rune(cell.ch)
 			strings.write_rune(&t.out, ch)
+			cursor_x = x + 1
+			cursor_y = y
+			if cursor_x >= buf.width {
+				cursor_x = 0
+				cursor_y = y + 1
+			}
 		}
-		if y + 1 < buf.height {
+		if !use_diff && y + 1 < buf.height {
 			strings.write_string(&t.out, "\r\n")
+			cursor_x = 0
+			cursor_y = y + 1
 		}
 	}
 	strings.write_string(&t.out, "\x1b[0m")
 	term_flush(t)
 
-	if t.has_prev {
-		buffer_destroy(&t.prev)
+	if !t.has_prev || t.prev.width != buf.width || t.prev.height != buf.height {
+		if t.has_prev {
+			buffer_destroy(&t.prev)
+		}
+		t.prev = buffer_create(buf.width, buf.height)
+		t.has_prev = true
 	}
-	t.prev = buffer_create(buf.width, buf.height)
 	copy(t.prev.cells, buf.cells)
-	t.has_prev = true
+}
+
+// Build present output into a builder for tests. Does not write to the terminal.
+term_present_to_builder :: proc(t: ^Term, buf: ^Buffer, out: ^strings.Builder, want_diff: bool) {
+	diff := want_diff && t.has_prev && t.prev.width == buf.width && t.prev.height == buf.height
+	strings.builder_reset(out)
+	if !diff {
+		strings.write_string(out, "\x1b[H")
+	}
+	last_fg := Color{255, 255, 255}
+	last_bg := Color{0, 0, 0}
+	last_style: Style
+	sgr_valid := false
+	cursor_x := -1
+	cursor_y := -1
+	for y in 0 ..< buf.height {
+		for x in 0 ..< buf.width {
+			idx := y * buf.width + x
+			cell := buf.cells[idx]
+			if diff {
+				prev := t.prev.cells[idx]
+				if cell.ch == prev.ch && cell.fg == prev.fg && cell.bg == prev.bg && cell.style == prev.style {
+					continue
+				}
+				if cursor_x != x || cursor_y != y {
+					fmt.sbprintf(out, "\x1b[%d;%dH", y + 1, x + 1)
+					cursor_x = x
+					cursor_y = y
+					sgr_valid = false
+				}
+			}
+			if !sgr_valid || cell.fg != last_fg || cell.bg != last_bg || cell.style != last_style {
+				write_sgr(out, cell.fg, cell.bg, cell.style)
+				last_fg = cell.fg
+				last_bg = cell.bg
+				last_style = cell.style
+				sgr_valid = true
+			}
+			strings.write_rune(out, sanitize_rune(cell.ch))
+			cursor_x = x + 1
+			cursor_y = y
+			if cursor_x >= buf.width {
+				cursor_x = 0
+				cursor_y = y + 1
+			}
+		}
+		if !diff && y + 1 < buf.height {
+			strings.write_string(out, "\r\n")
+		}
+	}
+	strings.write_string(out, "\x1b[0m")
 }
 
 term_read_byte :: proc() -> (b: u8, ok: bool) {

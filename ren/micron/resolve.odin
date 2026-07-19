@@ -10,6 +10,8 @@ package micron
 
 import "core:strings"
 
+import "ren:lxmf"
+
 action_destroy :: proc(a: ^Action) {
 	if a == nil {
 		return
@@ -21,28 +23,8 @@ action_destroy :: proc(a: ^Action) {
 	a^ = {}
 }
 
-is_hex32 :: proc(s: string) -> bool {
-	if len(s) != 32 {
-		return false
-	}
-	for i in 0 ..< 32 {
-		if !is_hex_byte(s[i]) {
-			return false
-		}
-	}
-	return true
-}
-
 decode_hex32_bytes :: proc(s: string) -> (out: [16]u8, ok: bool) {
-	if !is_hex32(s) {
-		return {}, false
-	}
-	for i in 0 ..< 16 {
-		hi := hex_nibble(s[i * 2])
-		lo := hex_nibble(s[i * 2 + 1])
-		out[i] = hi << 4 | lo
-	}
-	return out, true
+	return lxmf.decode_hex32(s)
 }
 
 strip_destination_prefix :: proc(raw: string) -> string {
@@ -210,7 +192,7 @@ resolve_link :: proc(
 	}
 
 	colon := strings.index_byte(path_part, ':')
-	if colon == 32 && is_hex32(path_part[:32]) {
+	if colon == 32 && lxmf.is_hex32(path_part[:32]) {
 		node, nok := decode_hex32_bytes(path_part[:32])
 		if !nok {
 			request_data_destroy(&req)
@@ -228,7 +210,7 @@ resolve_link :: proc(
 		return make_page_action(node, true, path, req, formatted, allocator)
 	}
 
-	if is_hex32(path_part) {
+	if lxmf.is_hex32(path_part) {
 		request_data_destroy(&req)
 		node, nok := decode_hex32_bytes(path_part)
 		if !nok {
@@ -237,7 +219,7 @@ resolve_link :: proc(
 		return make_page_action(node, true, "/page/index.mu", {}, formatted, allocator)
 	}
 
-	if len(path_part) == 33 && path_part[32] == ':' && is_hex32(path_part[:32]) {
+	if len(path_part) == 33 && path_part[32] == ':' && lxmf.is_hex32(path_part[:32]) {
 		request_data_destroy(&req)
 		node, nok := decode_hex32_bytes(path_part[:32])
 		if !nok {

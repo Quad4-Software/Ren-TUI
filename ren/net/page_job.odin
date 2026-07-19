@@ -74,7 +74,7 @@ session_page_cancel :: proc(s: ^Session) {
 page_fail :: proc(s: ^Session, msg: string) {
 	delete(s.page.status)
 	s.page.status = strings.clone(msg)
-	s.status = s.page.status
+	session_event_push(s, .Page_Failed, msg)
 	s.page.ok = false
 	s.page.done = true
 	s.page.active = false
@@ -89,7 +89,7 @@ page_fail :: proc(s: ^Session, msg: string) {
 page_set_status :: proc(s: ^Session, msg: string) {
 	delete(s.page.status)
 	s.page.status = strings.clone(msg)
-	s.status = s.page.status
+	session_set_status_text(s, msg)
 }
 
 session_page_begin :: proc(
@@ -100,15 +100,15 @@ session_page_begin :: proc(
 	identify_after := false,
 ) -> bool {
 	if !s.started {
-		s.status = "offline"
+		session_event_push(s, .Error, "offline")
 		return false
 	}
 	if page_path == "" {
-		s.status = "bad page path"
+		session_event_push(s, .Page_Failed, "bad page path")
 		return false
 	}
 	if !strings.has_prefix(page_path, "/page/") || strings.contains(page_path, "..") {
-		s.status = "bad page path"
+		session_event_push(s, .Page_Failed, "bad page path")
 		return false
 	}
 	for i in 0 ..< len(page_path) {
@@ -116,7 +116,7 @@ session_page_begin :: proc(
 		switch c {
 		case 'a' ..= 'z', 'A' ..= 'Z', '0' ..= '9', '/', '.', '_', '-', '~':
 		case:
-			s.status = "bad page path"
+			session_event_push(s, .Page_Failed, "bad page path")
 			return false
 		}
 	}
@@ -171,7 +171,12 @@ session_page_take :: proc(
 	s.page.active = false
 	s.page.phase = .Idle
 	if status != "" {
-		s.status = status
+		if ok {
+			session_event_push(s, .Page_Ok, status)
+		} else {
+			session_event_push(s, .Page_Failed, status)
+		}
+		delete(status)
 	}
 	return content, path, node, ok, true
 }

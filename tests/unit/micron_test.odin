@@ -173,3 +173,18 @@ test_micron_sanitize_strips_controls_in_labels :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, ok)
 }
+
+@(test)
+test_micron_color_to_rgb_hex :: proc(t: ^testing.T) {
+	fb := micron.Rgb{r = 1, g = 2, b = 3}
+	c3 := micron.color_to_rgb("f00", fb)
+	testing.expect_value(t, c3.r, u8(255))
+	testing.expect_value(t, c3.g, u8(0))
+	testing.expect_value(t, c3.b, u8(0))
+	c6 := micron.color_to_rgb("112233", fb)
+	testing.expect_value(t, c6.r, u8(0x11))
+	testing.expect_value(t, c6.g, u8(0x22))
+	testing.expect_value(t, c6.b, u8(0x33))
+	def := micron.color_to_rgb("default", fb)
+	testing.expect_value(t, def.r, u8(1))
+}

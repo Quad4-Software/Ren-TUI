@@ -12,6 +12,7 @@ import "core:strings"
 import "core:time"
 
 import "ren:constants"
+import "ren:lxmf"
 import "ren:micron"
 import "ren:net"
 import "ren:store"
@@ -80,7 +81,7 @@ page_parse_url :: proc(s: string) -> (hash: [store.HASH_LEN]u8, has_hash: bool, 
 		v = v[:bt]
 	}
 	if colon := strings.index_byte(v, ':'); colon == 32 {
-		h, hok := decode_hex32(v[:32])
+		h, hok := lxmf.decode_hex32(v[:32])
 		if !hok {
 			return {}, false, "", false
 		}
