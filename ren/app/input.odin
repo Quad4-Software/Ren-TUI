@@ -8,10 +8,12 @@ Maps keyboard and mouse events into app behavior.
 package app
 
 import "core:fmt"
+import "core:strings"
 
 import "ren:lxmf"
 import "ren:micron"
 import "ren:net"
+import "ren:store"
 import "ren:ui"
 
 on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
@@ -77,6 +79,38 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		}
 		_ = ui.input_handle(&a.config_edit, ev)
 		return false
+	}
+
+	if a.conv_renaming {
+		if ev.kind == .Esc {
+			a.conv_renaming = false
+			ui.input_clear(&a.conv_rename)
+			return false
+		}
+		if ev.kind == .Enter {
+			apply_conv_rename(a)
+			return false
+		}
+		_ = ui.input_handle(&a.conv_rename, ev)
+		return false
+	}
+
+	if a.conv_replying && a.tab == .Conversations {
+		if ev.kind == .Esc {
+			a.conv_replying = false
+			ui.input_clear(&a.conv_reply)
+			return false
+		}
+		if ev.kind == .Enter {
+			try_conv_reply(a)
+			return false
+		}
+		if ev.kind == .Up || ev.kind == .Down || ev.kind == .Page_Up || ev.kind == .Page_Down {
+			// fall through to list/scroll
+		} else {
+			_ = ui.input_handle(&a.conv_reply, ev)
+			return false
+		}
 	}
 
 	if a.url_editing {
@@ -170,7 +204,12 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 					set_status(a, "search peers  Enter done  Esc cancel", STATUS_HOLD)
 				} else if a.tab == .Conversations {
 					a.conv_searching = true
+					a.conv_replying = false
 					set_status(a, "search conversations  Enter done  Esc cancel", STATUS_HOLD)
+				}
+			case 'r', 'R':
+				if a.tab == .Conversations {
+					start_conv_rename(a)
 				}
 			case 'l', 'L':
 				if a.tab == .Network {
@@ -270,13 +309,23 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		if ev.kind == .Up {
 			ui.list_move(&a.conv_list, -1, visible)
 			a.msg_scroll = 0
+			conv_mark_selected_read(a)
 		} else if ev.kind == .Down {
 			ui.list_move(&a.conv_list, 1, visible)
 			a.msg_scroll = 0
+			conv_mark_selected_read(a)
 		} else if ev.kind == .Page_Up {
 			a.msg_scroll = max(0, a.msg_scroll - visible)
 		} else if ev.kind == .Page_Down {
 			a.msg_scroll += visible
+		} else if ev.kind == .Enter {
+			idx := conv_selected_store_idx(a)
+			if idx >= 0 {
+				peer := a.conversations.items[idx].peer_hash
+				select_conversation(a, peer)
+				a.conv_replying = true
+				set_status(a, "reply mode  Enter send  Esc cancel", STATUS_HOLD)
+			}
 		}
 	case .Network:
 		visible := network_list_visible(a)
@@ -406,6 +455,8 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 		case .Conversations:
 			ui.list_click(&a.conv_list, row, visible)
 			a.msg_scroll = 0
+			conv_mark_selected_read(a)
+			a.conv_replying = true
 		case .Network:
 			ui.list_click(&a.net_list, row, network_list_visible(a))
 			network_skip_header(a, 1, network_list_visible(a))
@@ -515,4 +566,21 @@ network_selected_is_nomad :: proc(a: ^App) -> bool {
 		return false
 	}
 	return a.directory.peers[idx].kind == .Nomad_Node
+}
+
+conv_mark_selected_read :: proc(a: ^App) {
+	idx := conv_selected_store_idx(a)
+	if idx < 0 {
+		return
+	}
+	peer := a.conversations.items[idx].peer_hash
+	if store.conversations_clear_unread(&a.conversations, peer) {
+		_ = store.conversations_save_peer(&a.conversations, &a.cfg, peer)
+		refresh_conv_list(a)
+		select_conversation_row_only(a, peer)
+	}
+	hex := store.hash_hex(peer, context.temp_allocator)
+	ui.input_clear(&a.compose_to)
+	strings.write_string(&a.compose_to.text, hex)
+	a.compose_to.cursor = len(hex)
 }

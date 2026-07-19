@@ -92,7 +92,9 @@ cp -f "${VENDOR_LIB}/${LIB_NAME}" "${BIN_DIR}/${LIB_NAME}"
 COLLECTION="-collection:ren=${ROOT}/ren -collection:rns=${VENDOR_ODIN}"
 ODIN=${ODIN:-odin}
 
-make -C "${ROOT}" git-commit >/dev/null
+GIT_COMMIT=$(git -C "${ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE=$(date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || echo unknown)
+VERSION_DEFINES="-define:REN_GIT_COMMIT=${GIT_COMMIT} -define:REN_BUILD_DATE=${BUILD_DATE}"
 
 build_one() {
 	cmd="$1"
@@ -112,7 +114,7 @@ build_one() {
 			-target:"${ODIN_TARGET}" \
 			-build-mode:obj \
 			-out:"${obj_prefix}.o" \
-			${COLLECTION}
+			${COLLECTION} ${VERSION_DEFINES}
 
 		objs=$(find "${BIN_DIR}" -maxdepth 1 -name "${out_base}-*.o" -print)
 		if [ -z "${objs}" ]; then
@@ -164,7 +166,7 @@ build_one() {
 			${ODIN} build "cmd/${cmd}" \
 			-target:"${ODIN_TARGET}" \
 			-out:"${out}" \
-			${COLLECTION} \
+			${COLLECTION} ${VERSION_DEFINES} \
 			-extra-linker-flags:"${link_flags}"
 		;;
 	esac

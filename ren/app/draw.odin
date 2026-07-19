@@ -50,13 +50,15 @@ GUIDE_LINES := [?]string{
 	"Tab       cycle links/fields   Enter open/toggle",
 	"Space     toggle checkbox/radio   type to edit text",
 	"[ ]       scroll   PgUp/PgDn scroll   Esc back to Network",
-	"Links: /page/...  hash:/page/...  lxmf://hash",
+	"Links: /page/...  /file/...  hash:/page/...  lxmf://hash",
 	"Forms: <flags|name|value`data>  submit via [label`url`fields]",
 	"Dynamic: /page/x.mu`var=1|field.user=alice  or `user|*",
 	"Dangerous schemes blocked. External http shown only.",
 	"",
 	"Conversations",
-	"/         search   Up/Down list   PgUp/PgDn messages",
+	"r         rename contact   Enter reply   / search",
+	"Up/Down list   PgUp/PgDn messages",
+	"Names: custom > announce > hash",
 	"",
 	"Config ~/.config/ren-tui/config",
 	"obfuscate_hops = yes writes RNS local_hops_delta (off by default)",
@@ -66,9 +68,11 @@ GUIDE_LINES := [?]string{
 	"download_dir under [client] (default ~/.config/ren-tui/pages)",
 	"theme = field|slate|amber|mono under [ui]",
 	"Conversations under ~/.config/ren-tui/conversations/",
+	"Peers directory peers.msgpack (survives reboot)",
 	"Default display name: Anonymous",
 	"",
 	"Pages are display-only (no exec). Size capped.",
+	"/file/ downloads go to download_dir with footer progress.",
 	"Click Your LXMF Address in Config to copy.",
 }
 
@@ -119,7 +123,12 @@ draw_conversations :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	inner := ui.rect_inset(r, 1)
 	left, right := ui.rect_split_vertical(inner, min(28, inner.w / 3))
 	a.list_rect = left
-	a.detail_rect = right
+	reply_h := 3 if a.conv_replying || a.conv_renaming else 0
+	msg_area := right
+	if reply_h > 0 && right.h > reply_h + 1 {
+		msg_area.h = right.h - reply_h
+	}
+	a.detail_rect = msg_area
 	ui.draw_list(buf, left, &a.conv_list)
 
 	t := ui.theme()
@@ -128,18 +137,19 @@ draw_conversations :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		ui.buffer_text(buf, right.x + 1, right.y, "No conversations yet", t.muted, t.bg)
 		return
 	}
-	if a.conv_list.selected < 0 || a.conv_list.selected >= len(a.conversations.items) {
+	idx := conv_selected_store_idx(a)
+	if idx < 0 {
 		ui.buffer_text(buf, right.x + 1, right.y, "Select a conversation", t.muted, t.bg)
 		return
 	}
-	conv := a.conversations.items[a.conv_list.selected]
+	conv := a.conversations.items[idx]
 	start := a.msg_scroll
 	if start < 0 {
 		start = 0
 	}
-	y := right.y
+	y := msg_area.y
 	for i := start; i < len(conv.messages); i += 1 {
-		if y >= right.y + right.h {
+		if y >= msg_area.y + msg_area.h {
 			break
 		}
 		msg := conv.messages[i]
@@ -153,28 +163,35 @@ draw_conversations :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		}
 
 		if out {
-			mx := right.x + max(1, right.w / 4)
-			mw := right.w - (mx - right.x) - 1
+			mx := msg_area.x + max(1, msg_area.w / 4)
+			mw := msg_area.w - (mx - msg_area.x) - 1
 			ui.buffer_fill_rect(buf, mx, y, mw, 1, ' ', t.accent, t.highlight_bg)
 			ui.buffer_text(buf, mx, y, truncate(meta, mw), t.accent, t.highlight_bg)
 			y += 1
-			if y >= right.y + right.h {
+			if y >= msg_area.y + msg_area.h {
 				break
 			}
 			ui.buffer_fill_rect(buf, mx, y, mw, 1, ' ', t.fg, t.highlight_bg)
 			ui.buffer_text(buf, mx, y, truncate(body, mw), t.fg, t.highlight_bg)
 		} else {
-			mw := max(8, right.w * 3 / 4)
-			ui.buffer_fill_rect(buf, right.x + 1, y, mw, 1, ' ', t.muted, t.input_bg)
-			ui.buffer_text(buf, right.x + 1, y, truncate(meta, mw), t.muted, t.input_bg)
+			mw := max(8, msg_area.w * 3 / 4)
+			ui.buffer_fill_rect(buf, msg_area.x + 1, y, mw, 1, ' ', t.muted, t.input_bg)
+			ui.buffer_text(buf, msg_area.x + 1, y, truncate(meta, mw), t.muted, t.input_bg)
 			y += 1
-			if y >= right.y + right.h {
+			if y >= msg_area.y + msg_area.h {
 				break
 			}
-			ui.buffer_fill_rect(buf, right.x + 1, y, mw, 1, ' ', t.fg, t.input_bg)
-			ui.buffer_text(buf, right.x + 1, y, truncate(body, mw), t.fg, t.input_bg)
+			ui.buffer_fill_rect(buf, msg_area.x + 1, y, mw, 1, ' ', t.fg, t.input_bg)
+			ui.buffer_text(buf, msg_area.x + 1, y, truncate(body, mw), t.fg, t.input_bg)
 		}
 		y += 2
+	}
+	if a.conv_renaming {
+		edit_r := ui.Rect{right.x, right.y + right.h - 3, right.w, 3}
+		ui.draw_input(buf, edit_r, &a.conv_rename, "rename", true)
+	} else if a.conv_replying {
+		edit_r := ui.Rect{right.x, right.y + right.h - 3, right.w, 3}
+		ui.draw_input(buf, edit_r, &a.conv_reply, "reply", true)
 	}
 }
 

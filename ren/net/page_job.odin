@@ -28,9 +28,11 @@ Page_Job :: struct {
 	active:         bool,
 	done:           bool,
 	ok:             bool,
+	is_file:        bool,
 	phase:          Page_Phase,
 	node:           [store.HASH_LEN]u8,
 	path:           string,
+	filename:       string,
 	request_data:   []u8,
 	link:           rns.Link,
 	link_id:        [store.HASH_LEN]u8,
@@ -43,6 +45,9 @@ Page_Job :: struct {
 	path_refreshed:   bool,
 	link_rediscover:  bool,
 	identify_after:   bool,
+	started_at:     time.Tick,
+	bytes_got:      int,
+	bytes_total:    int,
 	content:        []u8,
 	status:         string,
 }
@@ -53,6 +58,9 @@ session_page_busy :: proc(s: ^Session) -> bool {
 
 session_page_status :: proc(s: ^Session) -> string {
 	if s.page.active || s.page.done {
+		if s.page.is_file {
+			return session_file_progress_line(s, context.temp_allocator)
+		}
 		if s.page.status != "" {
 			return s.page.status
 		}
@@ -65,6 +73,7 @@ session_page_cancel :: proc(s: ^Session) {
 		_ = rns.link_close(s.page.link)
 	}
 	delete(s.page.path)
+	delete(s.page.filename)
 	delete(s.page.content)
 	delete(s.page.status)
 	delete(s.page.request_data)
@@ -104,15 +113,18 @@ session_page_begin :: proc(
 		session_event_push(s, .Error, "offline")
 		return false
 	}
-	// Drop any in-flight fetch before validating the new request so a bad
-	// follow-up still clears the prior job (caller may already have cancelled).
 	session_page_cancel(s)
 	if page_path == "" {
-		session_event_push(s, .Page_Failed, "bad page path")
+		session_event_push(s, .Page_Failed, "bad path")
 		return false
 	}
-	if !strings.has_prefix(page_path, "/page/") || strings.contains(page_path, "..") {
-		session_event_push(s, .Page_Failed, "bad page path")
+	is_file := strings.has_prefix(page_path, "/file/")
+	if !is_file && !strings.has_prefix(page_path, "/page/") {
+		session_event_push(s, .Page_Failed, "bad path")
+		return false
+	}
+	if strings.contains(page_path, "..") {
+		session_event_push(s, .Page_Failed, "bad path")
 		return false
 	}
 	for i in 0 ..< len(page_path) {
@@ -120,15 +132,20 @@ session_page_begin :: proc(
 		switch c {
 		case 'a' ..= 'z', 'A' ..= 'Z', '0' ..= '9', '/', '.', '_', '-', '~':
 		case:
-			session_event_push(s, .Page_Failed, "bad page path")
+			session_event_push(s, .Page_Failed, "bad path")
 			return false
 		}
 	}
 	s.page.active = true
 	s.page.done = false
 	s.page.ok = false
+	s.page.is_file = is_file
 	s.page.node = node
 	s.page.path = strings.clone(page_path)
+	s.page.filename = strings.clone(file_basename_from_path(page_path))
+	s.page.started_at = time.tick_now()
+	s.page.bytes_got = 0
+	s.page.bytes_total = 0
 	if len(request_payload) > 0 {
 		s.page.request_data = make([]u8, len(request_payload))
 		copy(s.page.request_data, request_payload)
@@ -141,9 +158,92 @@ session_page_begin :: proc(
 		time.Duration(constants.PATH_FIND_TIMEOUT_SEC) * time.Second,
 	)
 	s.page.retry_at = time.tick_now()
-	page_set_status(s, fmt.tprintf("finding path for %s...", node_hash_hex(node)))
+	if is_file {
+		page_set_status(s, fmt.tprintf("%s  finding path...", s.page.filename))
+	} else {
+		page_set_status(s, fmt.tprintf("finding path for %s...", node_hash_hex(node)))
+	}
 	session_page_tick(s)
 	return true
+}
+
+file_basename_from_path :: proc(path: string) -> string {
+	p := path
+	if bt := strings.index_byte(p, '`'); bt >= 0 {
+		p = p[:bt]
+	}
+	if p == "" || strings.contains(p, "..") {
+		return "download.bin"
+	}
+	base := p
+	if slash := strings.last_index_byte(p, '/'); slash >= 0 && slash + 1 < len(p) {
+		base = p[slash + 1:]
+	}
+	if base == "" || base == "." || strings.contains(base, "..") {
+		return "download.bin"
+	}
+	for i in 0 ..< len(base) {
+		c := base[i]
+		switch c {
+		case 'a' ..= 'z', 'A' ..= 'Z', '0' ..= '9', '.', '_', '-', '~':
+		case:
+			return "download.bin"
+		}
+	}
+	return base
+}
+
+session_file_progress_line :: proc(s: ^Session, allocator := context.allocator) -> string {
+	if !s.page.active && !s.page.done {
+		return ""
+	}
+	if !s.page.is_file {
+		return s.page.status
+	}
+	name := s.page.filename if s.page.filename != "" else "file"
+	elapsed := time.tick_since(s.page.started_at)
+	secs := f64(elapsed) / f64(time.Second)
+	if secs < 0.05 {
+		secs = 0.05
+	}
+	if s.page.bytes_got <= 0 {
+		if s.page.status != "" {
+			return strings.clone(s.page.status, allocator)
+		}
+		return fmt.aprintf("%s  waiting", name, allocator = allocator)
+	}
+	speed := f64(s.page.bytes_got) / secs
+	speed_s := format_rate(speed, context.temp_allocator)
+	if s.page.bytes_total > 0 {
+		pct := (100 * s.page.bytes_got) / s.page.bytes_total
+		if pct > 100 {
+			pct = 100
+		}
+		return fmt.aprintf("%s  %d%%  %s", name, pct, speed_s, allocator = allocator)
+	}
+	return fmt.aprintf("%s  %s  %s", name, format_bytes_short(s.page.bytes_got, context.temp_allocator), speed_s, allocator = allocator)
+}
+
+@(private)
+format_rate :: proc(bps: f64, allocator := context.allocator) -> string {
+	if bps < 1024 {
+		return fmt.aprintf("%.0fB/s", bps, allocator = allocator)
+	}
+	if bps < 1024 * 1024 {
+		return fmt.aprintf("%.1fKB/s", bps / 1024.0, allocator = allocator)
+	}
+	return fmt.aprintf("%.1fMB/s", bps / (1024.0 * 1024.0), allocator = allocator)
+}
+
+@(private)
+format_bytes_short :: proc(n: int, allocator := context.allocator) -> string {
+	if n < 1024 {
+		return fmt.aprintf("%dB", n, allocator = allocator)
+	}
+	if n < 1024 * 1024 {
+		return fmt.aprintf("%.1fKB", f64(n) / 1024.0, allocator = allocator)
+	}
+	return fmt.aprintf("%.1fMB", f64(n) / (1024.0 * 1024.0), allocator = allocator)
 }
 
 // Returns finished=true when a job completed (success or fail). Caller owns content on ok.
@@ -156,21 +256,26 @@ session_page_take :: proc(
 	node: [store.HASH_LEN]u8,
 	ok: bool,
 	finished: bool,
+	is_file: bool,
 ) {
 	if !s.page.done {
-		return nil, "", {}, false, false
+		return nil, "", {}, false, false, false
 	}
 	node = s.page.node
 	path = strings.clone(s.page.path, allocator)
 	ok = s.page.ok
+	is_file = s.page.is_file
 	content = s.page.content
 	s.page.content = nil
 	status := s.page.status
 	s.page.status = ""
 	delete(s.page.path)
 	s.page.path = ""
+	delete(s.page.filename)
+	s.page.filename = ""
 	s.page.done = false
 	s.page.active = false
+	s.page.is_file = false
 	s.page.phase = .Idle
 	if status != "" {
 		if ok {
@@ -180,7 +285,7 @@ session_page_take :: proc(
 		}
 		delete(status)
 	}
-	return content, path, node, ok, true
+	return content, path, node, ok, true, is_file
 }
 
 @(private)
@@ -278,15 +383,20 @@ session_page_on_event :: proc(s: ^Session, ev: ^rns.Event) -> bool {
 		}
 		data := rns.event_app_data(ev)
 		if len(data) == 0 {
-			page_fail(s, "page empty")
+			page_fail(s, "empty" if s.page.is_file else "page empty")
 			return true
 		}
-		if len(data) > constants.PAGE_MAX_BYTES {
-			data = data[:constants.PAGE_MAX_BYTES]
-			page_set_status(s, "page ok truncated")
-		} else {
-			page_set_status(s, fmt.tprintf("page %s", s.page.path))
+		max_n := constants.PAGE_MAX_BYTES
+		if s.page.is_file {
+			max_n = constants.FILE_MAX_BYTES
 		}
+		truncated := false
+		if len(data) > max_n {
+			data = data[:max_n]
+			truncated = true
+		}
+		s.page.bytes_got = len(data)
+		s.page.bytes_total = len(data)
 		s.page.content = bytes_clone(data)
 		s.page.ok = true
 		s.page.done = true
@@ -295,6 +405,18 @@ session_page_on_event :: proc(s: ^Session, ev: ^rns.Event) -> bool {
 		if s.page.link != 0 {
 			_ = rns.link_close(s.page.link)
 			s.page.link = 0
+		}
+		if s.page.is_file {
+			line := session_file_progress_line(s, context.temp_allocator)
+			if truncated {
+				page_set_status(s, fmt.tprintf("%s truncated", line))
+			} else {
+				page_set_status(s, fmt.tprintf("saved %s", s.page.filename))
+			}
+		} else if truncated {
+			page_set_status(s, "page ok truncated")
+		} else {
+			page_set_status(s, fmt.tprintf("page %s", s.page.path))
 		}
 		return true
 	case .Request_Failed:
@@ -308,14 +430,51 @@ session_page_on_event :: proc(s: ^Session, ev: ^rns.Event) -> bool {
 			}
 		}
 		err := rns.event_error_message(ev)
+		kind := "file" if s.page.is_file else "page"
 		if err != "" {
-			page_fail(s, fmt.tprintf("page request failed: %s", err))
+			page_fail(s, fmt.tprintf("%s request failed: %s", kind, err))
 		} else {
-			page_fail(s, "page request failed")
+			page_fail(s, fmt.tprintf("%s request failed", kind))
 		}
 		return true
-	case .Announce, .Link_Data, .Link_Closed, .Request_Incoming,
-	     .Resource_Started, .Resource_Concluded, .Destination_Data, .None:
+	case .Resource_Started:
+		if !s.page.is_file || s.page.phase != .Waiting_Response {
+			return false
+		}
+		data := rns.event_app_data(ev)
+		if len(data) >= 4 {
+			// Best-effort total size if present as first bytes (librns may not provide).
+			_ = data
+		}
+		page_set_status(s, fmt.tprintf("%s  transferring...", s.page.filename))
+		return true
+	case .Resource_Concluded:
+		if !s.page.is_file || (s.page.phase != .Waiting_Response && s.page.phase != .Sending_Request) {
+			return false
+		}
+		data := rns.event_app_data(ev)
+		if len(data) == 0 {
+			page_fail(s, "file empty")
+			return true
+		}
+		if len(data) > constants.FILE_MAX_BYTES {
+			data = data[:constants.FILE_MAX_BYTES]
+			page_set_status(s, fmt.tprintf("%s truncated", s.page.filename))
+		}
+		s.page.bytes_got = len(data)
+		s.page.bytes_total = len(data)
+		s.page.content = bytes_clone(data)
+		s.page.ok = true
+		s.page.done = true
+		s.page.active = false
+		s.page.phase = .Idle
+		if s.page.link != 0 {
+			_ = rns.link_close(s.page.link)
+			s.page.link = 0
+		}
+		page_set_status(s, fmt.tprintf("saved %s", s.page.filename))
+		return true
+	case .Announce, .Link_Data, .Link_Closed, .Request_Incoming, .Destination_Data, .None:
 		return false
 	}
 	return false

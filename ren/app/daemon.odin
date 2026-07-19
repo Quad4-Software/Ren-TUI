@@ -73,11 +73,12 @@ run_daemon :: proc(opts: ^cli.Options) -> int {
 	conversations: store.Conversations
 	store.directory_init(&directory)
 	store.directory_bind_spill(&directory, &cfg)
-	store.directory_load_spill_meta(&directory)
+	store.directory_load_all(&directory, &cfg)
 	store.conversations_init(&conversations)
 	store.conversations_load(&conversations, &cfg)
 	defer {
 		_ = store.conversations_save_all(&conversations, &cfg)
+		_ = store.directory_save_all(&directory)
 		store.conversations_destroy(&conversations)
 		store.directory_destroy(&directory)
 	}
@@ -123,6 +124,7 @@ run_daemon :: proc(opts: ^cli.Options) -> int {
 		}
 		if time.tick_since(last_save) >= 30 * time.Second {
 			_ = store.conversations_save_all(&conversations, &cfg)
+			_ = store.directory_save_all(&directory)
 			last_save = time.tick_now()
 		}
 		free_all(context.temp_allocator)
@@ -131,5 +133,6 @@ run_daemon :: proc(opts: ^cli.Options) -> int {
 
 	fmt.println("ren-tui daemon stopping")
 	_ = store.conversations_save_all(&conversations, &cfg)
+	_ = store.directory_save_all(&directory)
 	return 0
 }

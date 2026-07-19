@@ -29,8 +29,8 @@ RNS_LOCAL_DIR :: "rns"
 PEERS_HOT_MAX :: 256
 PEERS_SPILL_MAX :: 2048
 
-// On-disk conversation msgpack schema version
-CONVERSATIONS_SCHEMA_VERSION :: 1
+// On-disk conversation msgpack schema version (2 adds custom_name)
+CONVERSATIONS_SCHEMA_VERSION :: 2
 
 // Defaults
 DEFAULT_DISPLAY_NAME :: "Anonymous"
@@ -52,6 +52,7 @@ DEFAULT_PAGE_PATH :: "/page/index.mu"
 PAGE_MAX_BYTES :: 256 * 1024
 PAGE_MAX_LINES :: 2000
 PAGE_MAX_LINE_LEN :: 512
+FILE_MAX_BYTES :: 16 * 1024 * 1024
 
 // Path finder: keep recent destinations hot for link open
 PATH_CACHE_MAX :: 15

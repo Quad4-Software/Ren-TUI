@@ -102,6 +102,7 @@ Parse_State :: struct {
 Action_Kind :: enum {
 	None,
 	Page,
+	File,
 	Lxmf,
 	External,
 	Reject,

@@ -32,7 +32,7 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 
 	store.directory_init(&a.directory)
 	store.directory_bind_spill(&a.directory, &a.cfg)
-	store.directory_load_spill_meta(&a.directory)
+	store.directory_load_all(&a.directory, &a.cfg)
 	store.conversations_init(&a.conversations)
 	store.conversations_load(&a.conversations, &a.cfg)
 	ui.list_init(&a.conv_list)
@@ -41,6 +41,8 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	ui.input_init(&a.compose_to)
 	ui.input_init(&a.compose_body)
 	a.compose_method = a.cfg.send_method
+	ui.input_init(&a.conv_reply)
+	ui.input_init(&a.conv_rename)
 	ui.input_init(&a.config_edit)
 	ui.input_init(&a.url_edit)
 	ui.input_init(&a.net_search)
@@ -49,6 +51,7 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	a.page_link_focus = -1
 	a.page_field_focus = -1
 	a.page_form = make([dynamic]Page_Form_Input)
+	a.conv_peer_idx = make([dynamic]int)
 	a.net_peer_idx = make([dynamic]int)
 	a.ifaces = make([dynamic]Iface_View)
 	a.tab = .Network
@@ -82,9 +85,12 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 
 app_close :: proc(a: ^App) {
 	_ = store.conversations_save_all(&a.conversations, &a.cfg)
+	_ = store.directory_save_all(&a.directory)
 	net.session_close(&a.session)
 	ui.input_destroy(&a.compose_to)
 	ui.input_destroy(&a.compose_body)
+	ui.input_destroy(&a.conv_reply)
+	ui.input_destroy(&a.conv_rename)
 	ui.input_destroy(&a.config_edit)
 	ui.input_destroy(&a.url_edit)
 	ui.input_destroy(&a.net_search)
@@ -95,6 +101,7 @@ app_close :: proc(a: ^App) {
 	page_clear(a)
 	delete(a.page_hits)
 	delete(a.page_form)
+	delete(a.conv_peer_idx)
 	delete(a.net_peer_idx)
 	for &iface in a.ifaces {
 		delete(iface.name)
@@ -195,7 +202,7 @@ footer_keybinds :: proc(a: ^App) -> string {
 		}
 		return "g URL  Esc Network"
 	case .Conversations:
-		return "/ search  Up/Dn list  PgUp/Dn msgs"
+		return "r rename  Enter reply  / search  Up/Dn list  PgUp/Dn msgs"
 	case .Network:
 		return "l/n/p views  / search  Enter set/open  u sync"
 	case .Interfaces:

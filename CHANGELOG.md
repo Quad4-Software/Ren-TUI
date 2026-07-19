@@ -4,6 +4,13 @@ New work goes under the `[draft]` section only. Do not edit `[released]` section
 
 ## 0.2.0 - 2026-07-19 [draft]
 
+- Fix NomadNet links with backtick request vars (hash:/page/x`a=1|b=2) so var_* reaches the node
+- Keep last page request vars for URL bar and identify reload
+- Fix Conversations open/chat: filtered list indexing, unread clear, reply in-tab, Network LXMF opens conversation
+- Persist LXMF NomadNet and propagation peers across reboot via peers.msgpack hydrate/save
+- Custom contact names in Conversations (r rename) with announce-name fallback
+- NomadNet /file/ downloads with footer filename percent and speed feedback
+- Version stamps via compile -define (no sed of tracked version.odin on make)
 - Fix inbound LXMF from Python clients (opportunistic try-both unpack, refresh conversations on receive)
 - Python LXMF fixture interop feeds packed bytes into Odin message_unpack
 - Keep Network selection and scroll on the same peer when LXMF NomadNet or propagation announces reorder the list

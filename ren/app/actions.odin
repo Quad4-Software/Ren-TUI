@@ -12,6 +12,7 @@ import "core:strings"
 
 import "ren:constants"
 import "ren:lxmf"
+import "ren:micron"
 import "ren:net"
 import "ren:store"
 import "ren:ui"
@@ -31,36 +32,32 @@ try_fetch_selected_node :: proc(a: ^App) {
 		return
 	}
 	if peer.kind != .Nomad_Node {
-		hex := store.hash_hex(peer.hash, context.temp_allocator)
-		ui.input_clear(&a.compose_to)
-		strings.write_string(&a.compose_to.text, hex)
-		a.compose_to.cursor = len(hex)
-		switch_tab(a, .Compose)
-		a.compose_focus = 2
-		set_status(a, "compose to selected peer", STATUS_HOLD)
+		_ = store.directory_promote_from_spill(&a.directory, peer.hash)
+		open_lxmf_peer(a, peer.hash)
 		return
 	}
+	_ = store.directory_promote_from_spill(&a.directory, peer.hash)
 	page_fetch(a, peer.hash, constants.DEFAULT_PAGE_PATH)
 }
 
-resolve_nomad_target :: proc(a: ^App) -> (node: [store.HASH_LEN]u8, path: string, ok: bool) {
+resolve_nomad_target :: proc(a: ^App) -> (node: [store.HASH_LEN]u8, path: string, req: micron.Request_Data, ok: bool) {
 	if a.page_has_node {
 		p := a.page_path if a.page_path != "" else constants.DEFAULT_PAGE_PATH
-		return a.page_node, p, true
+		return a.page_node, p, a.page_request, true
 	}
 	row := a.net_list.selected
 	if row < 0 || row >= len(a.net_peer_idx) {
-		return {}, "", false
+		return {}, "", {}, false
 	}
 	idx := a.net_peer_idx[row]
 	if idx < 0 || idx >= len(a.directory.peers) {
-		return {}, "", false
+		return {}, "", {}, false
 	}
 	peer := a.directory.peers[idx]
 	if peer.kind != .Nomad_Node {
-		return {}, "", false
+		return {}, "", {}, false
 	}
-	return peer.hash, constants.DEFAULT_PAGE_PATH, true
+	return peer.hash, constants.DEFAULT_PAGE_PATH, {}, true
 }
 
 // Identify to NomadNet node then reload page so scripts can see remote_identity.
@@ -71,13 +68,13 @@ try_identify_node :: proc(a: ^App) {
 		set_status(a, "offline", STATUS_HOLD)
 		return
 	}
-	node, path, ok := resolve_nomad_target(a)
+	node, path, req, ok := resolve_nomad_target(a)
 	if !ok {
 		set_status(a, "select a NomadNet node or open a page first", STATUS_HOLD)
 		return
 	}
 	set_status(a, "identify: linking then reload (librns link_identify not available yet)", STATUS_HOLD)
-	page_fetch(a, node, path, {}, true)
+	page_fetch(a, node, path, req, true)
 }
 
 try_send :: proc(a: ^App) {
@@ -156,25 +153,141 @@ try_sync_propagation :: proc(a: ^App) {
 }
 
 select_conversation :: proc(a: ^App, peer: [store.HASH_LEN]u8) {
-	idx := store.conversations_index_of(&a.conversations, peer)
-	if idx < 0 {
+	store_idx := store.conversations_index_of(&a.conversations, peer)
+	if store_idx < 0 {
 		return
 	}
-	a.conv_list.selected = idx
+	list_row := -1
+	for idx, row in a.conv_peer_idx {
+		if idx == store_idx {
+			list_row = row
+			break
+		}
+	}
+	if list_row < 0 {
+		refresh_conv_list(a)
+		for idx, row in a.conv_peer_idx {
+			if idx == store_idx {
+				list_row = row
+				break
+			}
+		}
+	}
+	if list_row < 0 {
+		return
+	}
+	a.conv_list.selected = list_row
 	visible := max(1, a.list_rect.h)
 	ui.list_ensure_visible(&a.conv_list, visible)
-	conv := a.conversations.items[idx]
+	conv := a.conversations.items[store_idx]
 	a.msg_scroll = max(0, len(conv.messages) - max(1, a.detail_rect.h / 3))
+	if store.conversations_clear_unread(&a.conversations, peer) {
+		_ = store.conversations_save_peer(&a.conversations, &a.cfg, peer)
+		refresh_conv_list(a)
+		select_conversation_row_only(a, peer)
+	}
+	hex := store.hash_hex(peer, context.temp_allocator)
+	ui.input_clear(&a.compose_to)
+	strings.write_string(&a.compose_to.text, hex)
+	a.compose_to.cursor = len(hex)
+}
+
+select_conversation_row_only :: proc(a: ^App, peer: [store.HASH_LEN]u8) {
+	store_idx := store.conversations_index_of(&a.conversations, peer)
+	if store_idx < 0 {
+		return
+	}
+	for idx, row in a.conv_peer_idx {
+		if idx == store_idx {
+			a.conv_list.selected = row
+			return
+		}
+	}
 }
 
 open_lxmf_peer :: proc(a: ^App, peer: [store.HASH_LEN]u8) {
-	hex := store.hash_hex(peer, context.temp_allocator)
-	_ = store.conversations_get_or_create(&a.conversations, peer, hex)
+	_ = store.directory_promote_from_spill(&a.directory, peer)
+	label := store.directory_label(&a.directory, peer)
+	defer delete(label)
+	_ = store.conversations_get_or_create(&a.conversations, peer, label)
+	_ = store.conversations_save_peer(&a.conversations, &a.cfg, peer)
 	refresh_conv_list(a)
 	select_conversation(a, peer)
+	hex := store.hash_hex(peer, context.temp_allocator)
 	ui.input_clear(&a.compose_to)
 	strings.write_string(&a.compose_to.text, hex)
 	a.compose_to.cursor = len(hex)
 	switch_tab(a, .Conversations)
+	a.conv_replying = true
 	set_status(a, "opened LXMF conversation", STATUS_HOLD)
+}
+
+try_conv_reply :: proc(a: ^App) {
+	idx := conv_selected_store_idx(a)
+	if idx < 0 {
+		set_status(a, "select a conversation", STATUS_HOLD)
+		return
+	}
+	peer := a.conversations.items[idx].peer_hash
+	body := strings.trim_space(ui.input_value(&a.conv_reply))
+	if body == "" {
+		set_status(a, "need a message", STATUS_HOLD)
+		return
+	}
+	if !a.online {
+		set_status(a, "offline", STATUS_HOLD)
+		return
+	}
+	method := a.compose_method
+	if method == .Unknown {
+		method = a.cfg.send_method
+	}
+	if method == .Propagated && !a.cfg.has_propagation_node {
+		set_status(a, "select a propagation node in Network > Propagation first", STATUS_HOLD)
+		return
+	}
+	if net.session_send_begin(&a.session, peer, "", body, &a.conversations, &a.directory, &a.cfg, method) {
+		ui.input_clear(&a.conv_reply)
+		set_status(a, fmt.tprintf("sending (%s)...", lxmf.method_label(method)), STATUS_HOLD)
+		mark_dirty(a)
+	} else {
+		set_status(a, a.session.status if a.session.status != "" else "send failed", STATUS_HOLD)
+	}
+}
+
+start_conv_rename :: proc(a: ^App) {
+	idx := conv_selected_store_idx(a)
+	if idx < 0 {
+		set_status(a, "select a conversation", STATUS_HOLD)
+		return
+	}
+	conv := a.conversations.items[idx]
+	cur := conv.custom_name if conv.custom_name != "" else store.conversation_label(&a.directory, conv, context.temp_allocator)
+	ui.input_clear(&a.conv_rename)
+	strings.write_string(&a.conv_rename.text, cur)
+	a.conv_rename.cursor = len(cur)
+	a.conv_renaming = true
+	a.conv_replying = false
+	set_status(a, "rename contact  Enter save  Esc cancel (empty clears)", STATUS_HOLD)
+}
+
+apply_conv_rename :: proc(a: ^App) {
+	idx := conv_selected_store_idx(a)
+	a.conv_renaming = false
+	if idx < 0 {
+		ui.input_clear(&a.conv_rename)
+		return
+	}
+	peer := a.conversations.items[idx].peer_hash
+	val := strings.trim_space(ui.input_value(&a.conv_rename))
+	ui.input_clear(&a.conv_rename)
+	_ = store.conversations_set_custom_name(&a.conversations, peer, val)
+	_ = store.conversations_save_peer(&a.conversations, &a.cfg, peer)
+	refresh_conv_list(a)
+	select_conversation_row_only(a, peer)
+	if val == "" {
+		set_status(a, "custom name cleared", STATUS_HOLD)
+	} else {
+		set_status(a, "contact renamed", STATUS_HOLD)
+	}
 }

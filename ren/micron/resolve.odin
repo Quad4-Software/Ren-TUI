@@ -36,7 +36,10 @@ strip_destination_prefix :: proc(raw: string) -> string {
 }
 
 path_charset_ok :: proc(path: string) -> bool {
-	if path == "" || !strings.has_prefix(path, "/page/") {
+	if path == "" {
+		return false
+	}
+	if !strings.has_prefix(path, "/page/") && !strings.has_prefix(path, "/file/") {
 		return false
 	}
 	if strings.contains(path, "..") {
@@ -72,6 +75,28 @@ scheme_of :: proc(s: string) -> string {
 	return strings.to_lower(s[:colon], context.temp_allocator)
 }
 
+make_nomad_action :: proc(
+	node: [16]u8,
+	has_node: bool,
+	path: string,
+	req: Request_Data,
+	formatted: string,
+	allocator := context.allocator,
+) -> Action {
+	kind := Action_Kind.Page
+	if strings.has_prefix(path, "/file/") {
+		kind = .File
+	}
+	return Action{
+		kind = kind,
+		node = node,
+		has_node = has_node,
+		path = strings.clone(path, allocator),
+		url = strings.clone(formatted, allocator),
+		request = req,
+	}
+}
+
 make_page_action :: proc(
 	node: [16]u8,
 	has_node: bool,
@@ -80,14 +105,7 @@ make_page_action :: proc(
 	formatted: string,
 	allocator := context.allocator,
 ) -> Action {
-	return Action{
-		kind = .Page,
-		node = node,
-		has_node = has_node,
-		path = strings.clone(path, allocator),
-		url = strings.clone(formatted, allocator),
-		request = req,
-	}
+	return make_nomad_action(node, has_node, path, req, formatted, allocator)
 }
 
 // Resolve a formatted Micron URL against an optional current NomadNet node.
@@ -165,30 +183,33 @@ resolve_link :: proc(
 		return Action{kind = .Lxmf, peer = peer, url = strings.clone(formatted, allocator)}
 	}
 
-	if strings.has_prefix(path_part, "/") || (!strings.contains(path_part, "://") && strings.has_prefix(normalize_page_path(path_part), "/page/")) {
+	if strings.has_prefix(path_part, "/") ||
+	   (!strings.contains(path_part, "://") &&
+		(strings.has_prefix(normalize_page_path(path_part), "/page/") ||
+			strings.has_prefix(normalize_page_path(path_part), "/file/"))) {
 		path := normalize_page_path(path_part)
 		if !path_charset_ok(path) {
 			request_data_destroy(&req)
-			return Action{kind = .Reject, reason = strings.clone("bad page path", allocator)}
+			return Action{kind = .Reject, reason = strings.clone("bad path", allocator)}
 		}
 		if !has_base {
 			request_data_destroy(&req)
 			return Action{kind = .Reject, reason = strings.clone("no current node", allocator)}
 		}
-		return make_page_action(base_node, true, path, req, formatted, allocator)
+		return make_nomad_action(base_node, true, path, req, formatted, allocator)
 	}
 
 	if strings.has_prefix(path_part, ":/") {
 		path := path_part[1:]
 		if !path_charset_ok(path) {
 			request_data_destroy(&req)
-			return Action{kind = .Reject, reason = strings.clone("bad page path", allocator)}
+			return Action{kind = .Reject, reason = strings.clone("bad path", allocator)}
 		}
 		if !has_base {
 			request_data_destroy(&req)
 			return Action{kind = .Reject, reason = strings.clone("no current node", allocator)}
 		}
-		return make_page_action(base_node, true, path, req, formatted, allocator)
+		return make_nomad_action(base_node, true, path, req, formatted, allocator)
 	}
 
 	colon := strings.index_byte(path_part, ':')
@@ -205,9 +226,9 @@ resolve_link :: proc(
 		}
 		if !path_charset_ok(path) {
 			request_data_destroy(&req)
-			return Action{kind = .Reject, reason = strings.clone("bad page path", allocator)}
+			return Action{kind = .Reject, reason = strings.clone("bad path", allocator)}
 		}
-		return make_page_action(node, true, path, req, formatted, allocator)
+		return make_nomad_action(node, true, path, req, formatted, allocator)
 	}
 
 	if lxmf.is_hex32(path_part) {

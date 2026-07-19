@@ -58,6 +58,25 @@ test_page_parse_url_strips_request_suffix :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_bug_url_request_vars_survive_split_and_encode :: proc(t: ^testing.T) {
+	url := "c1c4d4deec691ad364853ff6c06879ff:/page/read_board.mu`board_name=all|key=anonymous"
+	base, req := micron.split_destination_request(url)
+	defer micron.request_data_destroy(&req)
+	testing.expect(t, strings.has_prefix(base, "c1c4"))
+	testing.expect(t, !strings.contains(base, "`"))
+	testing.expect(t, len(req.vars) == 2)
+	hash, has, path, ok := app.page_parse_url(url)
+	testing.expect(t, ok)
+	testing.expect(t, has)
+	testing.expect_value(t, path, "/page/read_board.mu")
+	testing.expect_value(t, hash[0], u8(0xc1))
+	delete(path)
+	payload := micron.encode_request_data(req)
+	defer delete(payload)
+	testing.expect(t, len(payload) >= 20)
+}
+
+@(test)
 test_page_sanitize_strips_controls :: proc(t: ^testing.T) {
 	raw := []u8{'h', 'i', 0, 0x1b, '[', 'A', '\n', 'o', 'k'}
 	s := app.page_sanitize_bytes(raw)
