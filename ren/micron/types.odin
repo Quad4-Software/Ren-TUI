@@ -22,6 +22,13 @@ Span_Kind :: enum {
 	HR,
 }
 
+Field_Kind :: enum {
+	None,
+	Text,
+	Checkbox,
+	Radio,
+}
+
 Style :: struct {
 	fg:        string,
 	bg:        string,
@@ -31,10 +38,19 @@ Style :: struct {
 }
 
 Span :: struct {
-	kind:  Span_Kind,
-	text:  string,
-	url:   string,
-	style: Style,
+	kind:             Span_Kind,
+	text:             string,
+	url:              string,
+	style:            Style,
+	field_kind:       Field_Kind,
+	field_name:       string,
+	field_value:      string,
+	field_label:      string,
+	field_width:      int,
+	field_masked:     bool,
+	field_prechecked: bool,
+	// Raw link field list (bare names and *) for form collect on activate.
+	field_spec:       string,
 }
 
 Line :: struct {
@@ -52,10 +68,12 @@ Doc :: struct {
 }
 
 Link_Hit :: struct {
-	line_idx: int,
-	x0:       int,
-	x1:       int,
-	url:      string,
+	line_idx:   int,
+	x0:         int,
+	x1:         int,
+	url:        string,
+	field_spec: string,
+	field_i:    int,
 }
 
 Formatting :: struct {

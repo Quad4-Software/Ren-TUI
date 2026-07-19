@@ -24,10 +24,13 @@ page_clear :: proc(a: ^App) {
 	micron.doc_destroy(&a.page_doc)
 	clear(&a.page_hits)
 	a.page_link_focus = -1
+	page_form_clear(a)
 	delete(a.page_source)
 	a.page_source = ""
 	delete(a.page_path)
 	a.page_path = ""
+	delete(a.page_error)
+	a.page_error = ""
 	a.page_node = {}
 	a.page_has_node = false
 	a.page_view_raw = false
@@ -140,6 +143,7 @@ page_apply_content :: proc(a: ^App, node: [store.HASH_LEN]u8, path: string, data
 	a.page_doc = micron.parse(a.page_source)
 	a.page_link_focus = 0 if a.page_doc.link_count > 0 else -1
 	clear(&a.page_hits)
+	page_form_init_from_doc(a)
 }
 
 page_fetch :: proc(
@@ -150,10 +154,12 @@ page_fetch :: proc(
 	identify_after := false,
 ) {
 	if !a.online {
+		page_set_error(a, "offline")
 		set_status(a, "offline", STATUS_HOLD)
 		return
 	}
 	if !page_path_allowed(path) {
+		page_set_error(a, "bad page path")
 		set_status(a, "bad page path", STATUS_HOLD)
 		return
 	}
@@ -161,14 +167,24 @@ page_fetch :: proc(
 	if net.session_page_busy(&a.session) {
 		net.session_page_cancel(&a.session)
 	}
+	delete(a.page_error)
+	a.page_error = ""
 	payload := micron.encode_request_data(req)
 	defer delete(payload)
 	if !net.session_page_begin(&a.session, node, path, payload, identify_after) {
-		set_status(a, a.session.status if a.session.status != "" else "fetch failed", STATUS_HOLD)
+		msg := a.session.status if a.session.status != "" else "fetch failed"
+		page_set_error(a, msg)
+		set_status(a, msg, STATUS_HOLD)
 		return
 	}
 	switch_tab(a, .Page)
 	set_status(a, net.session_page_status(&a.session), time.Duration(constants.PAGE_TIMEOUT_SEC) * time.Second)
+}
+
+page_set_error :: proc(a: ^App, msg: string) {
+	delete(a.page_error)
+	a.page_error = strings.clone(msg)
+	mark_dirty(a)
 }
 
 page_poll_result :: proc(a: ^App) {
@@ -184,6 +200,13 @@ page_poll_result :: proc(a: ^App) {
 	defer delete(path)
 	if !ok {
 		msg := a.session.status if a.session.status != "" else "page fetch failed"
+		a.page_node = node
+		a.page_has_node = true
+		if path != "" {
+			delete(a.page_path)
+			a.page_path = strings.clone(path)
+		}
+		page_set_error(a, msg)
 		set_status(a, msg, STATUS_HOLD)
 		delete(content)
 		return
@@ -278,7 +301,7 @@ page_line_count :: proc(a: ^App) -> int {
 	return micron.layout_row_count(a.page_doc, w)
 }
 
-page_activate_url :: proc(a: ^App, url: string) {
+page_activate_url :: proc(a: ^App, url: string, field_spec := "") {
 	act := micron.resolve_link(url, a.page_node, a.page_has_node)
 	defer micron.action_destroy(&act)
 	switch act.kind {
@@ -288,6 +311,9 @@ page_activate_url :: proc(a: ^App, url: string) {
 		if !act.has_node {
 			set_status(a, "no node for page link", STATUS_HOLD)
 			return
+		}
+		if field_spec != "" {
+			page_merge_form_request(a, &act.request, field_spec)
 		}
 		page_fetch(a, act.node, act.path, act.request)
 	case .Lxmf:
@@ -312,7 +338,7 @@ page_activate_focused_link :: proc(a: ^App) {
 				continue
 			}
 			if n == a.page_link_focus {
-				page_activate_url(a, span.url)
+				page_activate_url(a, span.url, span.field_spec)
 				return
 			}
 			n += 1
@@ -321,17 +347,7 @@ page_activate_focused_link :: proc(a: ^App) {
 }
 
 page_cycle_link :: proc(a: ^App, delta: int) {
-	total := micron.doc_link_count(a.page_doc)
-	if total <= 0 {
-		a.page_link_focus = -1
-		return
-	}
-	if a.page_link_focus < 0 {
-		a.page_link_focus = 0 if delta >= 0 else total - 1
-	} else {
-		a.page_link_focus = (a.page_link_focus + delta % total + total) % total
-	}
-	ensure_page_link_visible(a)
+	page_cycle_focus(a, delta)
 }
 
 ensure_page_link_visible :: proc(a: ^App) {
@@ -349,13 +365,19 @@ ensure_page_link_visible :: proc(a: ^App) {
 }
 
 page_click_link_at :: proc(a: ^App, x, y: int) -> bool {
+	if page_click_field_at(a, x, y) {
+		return true
+	}
 	for hit in a.page_hits {
+		if hit.url == "" {
+			continue
+		}
 		screen_y := a.detail_rect.y + 1 + (hit.line_idx - a.page_scroll)
 		if y != screen_y {
 			continue
 		}
 		if x >= hit.x0 && x < hit.x1 {
-			page_activate_url(a, hit.url)
+			page_activate_url(a, hit.url, hit.field_spec)
 			return true
 		}
 	}

@@ -46,6 +46,8 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	ui.input_init(&a.conv_search)
 	a.page_hits = make([dynamic]micron.Link_Hit)
 	a.page_link_focus = -1
+	a.page_field_focus = -1
+	a.page_form = make([dynamic]Page_Form_Input)
 	a.net_peer_idx = make([dynamic]int)
 	a.ifaces = make([dynamic]Iface_View)
 	a.tab = .Network
@@ -91,6 +93,7 @@ app_close :: proc(a: ^App) {
 	ui.list_destroy(&a.config_list)
 	page_clear(a)
 	delete(a.page_hits)
+	delete(a.page_form)
 	delete(a.net_peer_idx)
 	for &iface in a.ifaces {
 		delete(iface.name)
@@ -156,20 +159,54 @@ status_copy_buf :: proc(buf: []u8, len_out: ^int, msg: string) -> string {
 page_footer_left :: proc(a: ^App) -> string {
 	node, has := page_active_node(a)
 	size := page_footer_size(a)
-	if !has {
-		if size != "" {
-			return fmt.tprintf("Ren TUI  %s", size)
+	base := "Ren TUI"
+	if has {
+		hops_part := "hops=?"
+		if hops, ok := page_node_hops(a, node); ok {
+			hops_part = fmt.tprintf("hops=%d", hops)
 		}
-		return "Ren TUI"
+		if size != "" {
+			base = fmt.tprintf("Ren TUI  %s  %s", hops_part, size)
+		} else {
+			base = fmt.tprintf("Ren TUI  %s", hops_part)
+		}
+	} else if size != "" {
+		base = fmt.tprintf("Ren TUI  %s", size)
 	}
-	hops_part := "hops=?"
-	if hops, ok := page_node_hops(a, node); ok {
-		hops_part = fmt.tprintf("hops=%d", hops)
+	keys := footer_keybinds(a)
+	if keys == "" {
+		return base
 	}
-	if size != "" {
-		return fmt.tprintf("Ren TUI  %s  %s", hops_part, size)
+	return fmt.tprintf("%s  %s", base, keys)
+}
+
+footer_keybinds :: proc(a: ^App) -> string {
+	switch a.tab {
+	case .Page:
+		if net.session_page_busy(&a.session) {
+			return "Esc cancel"
+		}
+		if a.page_error != "" && a.page_source == "" {
+			return "g retry  Esc Network"
+		}
+		if a.page_source != "" {
+			return "g URL  s source  d save  i id  Tab focus"
+		}
+		return "g URL  Esc Network"
+	case .Conversations:
+		return "/ search  Up/Dn list  PgUp/Dn msgs"
+	case .Network:
+		return "l/n/p views  / search  Enter open  i id"
+	case .Interfaces:
+		return "Up/Dn scroll"
+	case .Compose:
+		return "Tab fields  Enter send"
+	case .Config:
+		return "Enter edit/toggle  Up/Dn"
+	case .Guide:
+		return "Up/Dn scroll"
 	}
-	return fmt.tprintf("Ren TUI  %s", hops_part)
+	return ""
 }
 
 page_footer_size :: proc(a: ^App) -> string {
@@ -219,6 +256,9 @@ page_status_omits_announce_stats :: proc(a: ^App) -> bool {
 }
 
 run :: proc(opts: ^cli.Options = nil) -> int {
+	if opts != nil && opts.daemon {
+		return run_daemon(opts)
+	}
 	a: App
 	if !app_init(&a, opts) {
 		fmt.eprintln("ren-tui: failed to start UI")

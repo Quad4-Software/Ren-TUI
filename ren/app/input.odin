@@ -39,11 +39,11 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 	a.poll_ticks += 1
 	if a.poll_ticks % 20 == 0 {
 		if a.tab == .Interfaces {
-			refresh_iface_cache(a)
+			_ = refresh_iface_cache(a)
 		}
 		mark_dirty(a)
 	} else if a.tab == .Interfaces && ev.kind != .None {
-		refresh_iface_cache(a)
+		_ = refresh_iface_cache(a)
 		mark_dirty(a)
 	}
 	update_status(a)
@@ -126,8 +126,21 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 
 	if net.session_page_busy(&a.session) && ev.kind == .Esc {
 		net.session_page_cancel(&a.session)
+		page_set_error(a, "page fetch cancelled")
 		set_status(a, "page fetch cancelled", STATUS_HOLD)
 		return false
+	}
+
+	if a.tab == .Page && !a.page_view_raw && !a.url_editing && a.page_field_focus >= 0 {
+		fkind := a.page_form[a.page_field_focus].kind if a.page_field_focus < len(a.page_form) else micron.Field_Kind.None
+		if fkind == .Text || fkind == .None {
+			if page_field_edit_rune(a, ev) {
+				return false
+			}
+		} else if ev.kind == .Rune && ev.ch == ' ' {
+			page_toggle_focused_field(a)
+			return false
+		}
 	}
 
 	#partial switch ev.kind {
@@ -208,8 +221,8 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			a.compose_focus = (a.compose_focus + 1) % 2
 			return false
 		}
-		if a.tab == .Page && !a.page_view_raw && !a.url_editing && micron.doc_link_count(a.page_doc) > 0 {
-			page_cycle_link(a, 1)
+		if a.tab == .Page && !a.page_view_raw && !a.url_editing && page_focus_total(a) > 0 {
+			page_cycle_focus(a, 1)
 			return false
 		}
 		switch_tab(a, Tab((int(a.tab) + 1) % TAB_COUNT))
@@ -224,8 +237,8 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		}
 		return false
 	case .Backtab:
-		if a.tab == .Page && !a.page_view_raw && !a.url_editing && micron.doc_link_count(a.page_doc) > 0 {
-			page_cycle_link(a, -1)
+		if a.tab == .Page && !a.page_view_raw && !a.url_editing && page_focus_total(a) > 0 {
+			page_cycle_focus(a, -1)
 			return false
 		}
 		switch_tab(a, Tab((int(a.tab) + TAB_COUNT - 1) % TAB_COUNT))
@@ -275,8 +288,8 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		} else if ev.kind == .Down || ev.kind == .Page_Down {
 			a.page_scroll += visible if ev.kind == .Page_Down else 1
 		} else if ev.kind == .Enter && !a.page_view_raw && !a.url_editing {
-			page_activate_focused_link(a)
-		} else if ev.kind == .Esc && a.page_source != "" && !a.url_editing {
+			page_activate_focused(a)
+		} else if ev.kind == .Esc && !a.url_editing && (a.page_source != "" || a.page_error != "") {
 			show_network_tab(a)
 		}
 	case .Interfaces:
@@ -440,6 +453,9 @@ handle_session_events :: proc(a: ^App) {
 			mark_dirty(a)
 		case .Send_Failed, .Page_Ok, .Page_Failed, .Error, .Online, .Offline:
 			if ev.detail != "" {
+				if ev.kind == .Page_Failed {
+					page_set_error(a, ev.detail)
+				}
 				set_status(a, ev.detail, STATUS_HOLD)
 				mark_dirty(a)
 			}

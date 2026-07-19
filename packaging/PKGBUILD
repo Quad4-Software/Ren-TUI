@@ -1,0 +1,33 @@
+# Maintainer: Quad4 <legal@quad4.io>
+# Build from packaging/: makepkg -f
+# Or from repo root after syncing pkgver with constants.VERSION.
+
+pkgname=ren-tui
+pkgver=0.1.1
+pkgrel=1
+pkgdesc="Terminal LXMF / NomadNet client for Reticulum"
+arch=('x86_64' 'aarch64')
+url="https://github.com/Quad4-Software/Ren-TUI"
+license=('0BSD')
+depends=('glibc')
+makedepends=('clang' 'make' 'odin' 'patchelf')
+options=('!strip' '!debug')
+source=()
+sha256sums=()
+
+prepare() {
+  ln -sfn "$(realpath "${startdir}/..")" "${srcdir}/${pkgname}-${pkgver}"
+}
+
+build() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make all LIBC=glibc
+}
+
+package() {
+  cd "${srcdir}/${pkgname}-${pkgver}"
+  make install DESTDIR="${pkgdir}" PREFIX=/usr LIBC=glibc
+  install -Dm644 LICENSE "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+  install -Dm644 README.md "${pkgdir}/usr/share/doc/${pkgname}/README.md"
+  install -Dm644 CHANGELOG.md "${pkgdir}/usr/share/doc/${pkgname}/CHANGELOG.md"
+}

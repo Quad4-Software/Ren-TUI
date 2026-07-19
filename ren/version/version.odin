@@ -12,8 +12,8 @@ import "core:fmt"
 import "ren:constants"
 
 VERSION :: constants.VERSION
-GIT_COMMIT :: "901038f"
-BUILD_DATE :: "2026-07-19T12:08Z"
+GIT_COMMIT :: "c56f229"
+BUILD_DATE :: "2026-07-19T13:02Z"
 
 full :: proc(allocator := context.allocator) -> string {
 	return fmt.aprintf("%s+%s", VERSION, GIT_COMMIT, allocator = allocator)

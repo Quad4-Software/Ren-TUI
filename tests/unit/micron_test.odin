@@ -216,3 +216,74 @@ test_micron_layout_hard_breaks_long_token :: proc(t: ^testing.T) {
 		testing.expect(t, micron.layout_row_width(row) <= 8)
 	}
 }
+
+@(test)
+test_micron_parse_field_metadata :: proc(t: ^testing.T) {
+	src := "`<?|agree|yes`I agree>\n`<14|user`alice>\n`<^|color|red|*`Red>"
+	doc := micron.parse(src)
+	defer micron.doc_destroy(&doc)
+	found_check := false
+	found_text := false
+	found_radio := false
+	for line in doc.lines {
+		for span in line.spans {
+			if span.kind != .Field {
+				continue
+			}
+			switch span.field_kind {
+			case .Checkbox:
+				testing.expect_value(t, span.field_name, "agree")
+				testing.expect_value(t, span.field_value, "yes")
+				testing.expect(t, strings.contains(span.text, "[ ]"))
+				found_check = true
+			case .Text:
+				testing.expect_value(t, span.field_name, "user")
+				testing.expect_value(t, span.field_value, "alice")
+				testing.expect_value(t, span.field_width, 14)
+				found_text = true
+			case .Radio:
+				testing.expect_value(t, span.field_name, "color")
+				testing.expect(t, span.field_prechecked)
+				testing.expect(t, strings.contains(span.text, "[x]"))
+				found_radio = true
+			case .None:
+			}
+		}
+	}
+	testing.expect(t, found_check)
+	testing.expect(t, found_text)
+	testing.expect(t, found_radio)
+}
+
+@(test)
+test_micron_link_keeps_field_spec_and_collect :: proc(t: ^testing.T) {
+	src := "`[Go`/page/x.mu`user|msg|*]"
+	doc := micron.parse(src)
+	defer micron.doc_destroy(&doc)
+	spec := ""
+	for line in doc.lines {
+		for span in line.spans {
+			if span.kind == .Link {
+				spec = span.field_spec
+			}
+		}
+	}
+	testing.expect(t, strings.contains(spec, "user"))
+	testing.expect(t, strings.contains(spec, "*"))
+
+	inputs := []micron.Form_Field_Input{
+		{kind = .Text, name = "user", value = "bob"},
+		{kind = .Text, name = "msg", value = "hi"},
+		{kind = .Checkbox, name = "extra", value = "1", checked = true},
+	}
+	all := micron.collect_form_fields(inputs)
+	defer micron.form_fields_map_destroy(&all)
+	testing.expect_value(t, all["user"], "bob")
+	testing.expect_value(t, all["extra"], "1")
+
+	req: micron.Request_Data
+	micron.request_data_init(&req)
+	defer micron.request_data_destroy(&req)
+	micron.merge_form_fields_into_request(&req, all, "user|msg")
+	testing.expect_value(t, len(req.fields), 2)
+}

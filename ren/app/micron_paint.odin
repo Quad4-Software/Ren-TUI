@@ -46,6 +46,7 @@ paint_doc :: proc(
 	doc: micron.Doc,
 	scroll: int,
 	focus_link: int,
+	focus_field: int,
 	hits: ^[dynamic]micron.Link_Hit,
 ) {
 	if hits != nil {
@@ -85,6 +86,7 @@ paint_doc :: proc(
 		for seg in layout_row.segs {
 			fg, bg, us := style_to_ui(seg.style, page_fg, page_bg)
 			is_link := seg.kind == .Link || seg.kind == .Partial
+			is_field := seg.kind == .Field
 			if is_link {
 				us += {.Underline}
 				if focus_link >= 0 && seg.link_i == focus_link {
@@ -92,6 +94,14 @@ paint_doc :: proc(
 					fg = t.highlight_fg
 				} else {
 					fg = t.title
+				}
+			}
+			if is_field {
+				if focus_field >= 0 && seg.field_i == focus_field {
+					us += {.Reverse}
+					fg = t.highlight_fg
+				} else {
+					fg = t.ok
 				}
 			}
 			if seg.kind == .HR {
@@ -105,13 +115,26 @@ paint_doc :: proc(
 				ui.buffer_put(buf, x, y, ch, fg, bg, us)
 				x += 1
 			}
-			if is_link && hits != nil && seg.url != "" && x > start_x {
-				append(hits, micron.Link_Hit{
-					line_idx = idx,
-					x0 = start_x,
-					x1 = x,
-					url = seg.url,
-				})
+			if hits != nil && x > start_x {
+				if is_link && seg.url != "" {
+					append(hits, micron.Link_Hit{
+						line_idx = idx,
+						x0 = start_x,
+						x1 = x,
+						url = seg.url,
+						field_spec = seg.field_spec,
+						field_i = -1,
+					})
+				} else if is_field && seg.field_i >= 0 {
+					append(hits, micron.Link_Hit{
+						line_idx = idx,
+						x0 = start_x,
+						x1 = x,
+						url = "",
+						field_spec = "",
+						field_i = seg.field_i,
+					})
+				}
 			}
 			if x >= r.x + r.w {
 				break
@@ -126,5 +149,5 @@ paint_lines :: proc(buf: ^ui.Buffer, r: ui.Rect, lines: []micron.Line, scroll: i
 	for line in lines {
 		append(&doc.lines, line)
 	}
-	paint_doc(buf, r, doc, scroll, -1, nil)
+	paint_doc(buf, r, doc, scroll, -1, -1, nil)
 }

@@ -9,13 +9,16 @@ package constants
 
 // App identity
 APP_NAME :: "ren-tui"
-VERSION :: "0.1.1"
+VERSION :: "0.1.2"
 
 // Config directory under $HOME/.config
 CONFIG_DIR_NAME :: "ren-tui"
 IDENTITY_FILE :: "identity"
 CONFIG_FILE :: "config"
 LIBRNS_LOG_FILE :: "librns.log"
+DAEMON_PID_FILE :: "ren-tui.pid"
+DAEMON_LOG_FILE :: "daemon.log"
+
 CONVERSATIONS_DIR :: "conversations"
 DOWNLOADS_DIR :: "pages"
 MESSAGES_FILE :: "messages.msgpack"

@@ -100,14 +100,14 @@ test_e2e_draw_widgets_into_buffer :: proc(t: ^testing.T) {
 
 	doc := micron.parse("> Page\nbody")
 	defer micron.doc_destroy(&doc)
-	app.paint_doc(&buf, ui.Rect{2, 2, 20, 5}, doc, 0, -1, nil)
+	app.paint_doc(&buf, ui.Rect{2, 2, 20, 5}, doc, 0, -1, -1, nil)
 	heading := ui.buffer_at(&buf, 4, 2)
 	testing.expect(t, heading != nil)
 	testing.expect_value(t, heading.ch, 'P')
 
 	long := micron.parse("alpha bravo charlie delta echo foxtrot")
 	defer micron.doc_destroy(&long)
-	app.paint_doc(&buf, ui.Rect{0, 10, 12, 4}, long, 0, -1, nil)
+	app.paint_doc(&buf, ui.Rect{0, 10, 12, 4}, long, 0, -1, -1, nil)
 	row0 := ui.buffer_at(&buf, 0, 10)
 	row1 := ui.buffer_at(&buf, 0, 11)
 	testing.expect(t, row0 != nil && row0.ch != 0)

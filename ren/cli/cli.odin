@@ -27,6 +27,7 @@ Options :: struct {
 	rns_config:          string,
 	timeout_sec:         int,
 	listen_mode:         bool,
+	daemon:              bool,
 }
 
 options_destroy :: proc(o: ^Options) {
@@ -50,6 +51,7 @@ Usage:
 Options:
   -h, --help                 show this help
   -v, -V, --version          show version
+  -d, --daemon               run in background (no TUI, POSIX)
       --paths                print resolved config paths and exit
       --config PATH          app config file (default ~/.config/ren-tui/config)
       --data-dir PATH        data directory (default ~/.config/ren-tui)
@@ -58,6 +60,10 @@ Options:
       --reset-conversations  delete stored conversations
       --reset-identity       delete local identity (regenerated on next start)
       --reset                reset config and conversations (not identity)
+
+Daemon:
+  Writes pid to data_dir/ren-tui.pid and logs to data_dir/daemon.log.
+  Stop with kill $(cat ~/.config/ren-tui/ren-tui.pid) or SIGTERM.
 
 Environment:
   %s            override Reticulum config path
@@ -158,6 +164,11 @@ parse_args :: proc(args: []string, listen_mode: bool) -> (opts: Options, err: st
 			}
 			i += 1
 			opts.rns_config = strings.clone(args[i])
+		case "-d", "--daemon", "--deamon":
+			if listen_mode {
+				return opts, "-d/--daemon is for ren-tui only"
+			}
+			opts.daemon = true
 		case "-t", "--timeout":
 			if !listen_mode {
 				return opts, fmt.tprintf("unknown option %s", a)

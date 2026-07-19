@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Quad4
 
 /*
-Micron field span parser (display-only widgets).
+Micron field span parser (NomadNet-compatible form widgets).
 */
 
 package micron
@@ -24,8 +24,9 @@ parse_field :: proc(line: string, start: int, style: Style, allocator := context
 	name := field_content
 	value := ""
 	masked := false
-	kind_label := "text"
+	kind := Field_Kind.Text
 	width := 24
+	prechecked := false
 
 	if before, after, cut_ok := cut_once(field_content, '|'); cut_ok {
 		flags := before
@@ -37,14 +38,14 @@ parse_field :: proc(line: string, start: int, style: Style, allocator := context
 			value = rest
 			if before2, after2, cut2 := cut_once(rest, '|'); cut2 {
 				value = before2
-				_ = after2
+				prechecked = after2 == "*"
 			}
 		}
 		if strings.contains(flags, "^") {
-			kind_label = "radio"
+			kind = .Radio
 			flags = strip_byte(flags, '^')
 		} else if strings.contains(flags, "?") {
-			kind_label = "check"
+			kind = .Checkbox
 			flags = strip_byte(flags, '?')
 		} else if strings.contains(flags, "!") {
 			masked = true
@@ -52,8 +53,8 @@ parse_field :: proc(line: string, start: int, style: Style, allocator := context
 		}
 		if flags != "" {
 			if w, wok := strconv.parse_int(flags); wok && w > 0 {
-				if w > 64 {
-					w = 64
+				if w > 256 {
+					w = 256
 				}
 				width = w
 			}
@@ -66,28 +67,65 @@ parse_field :: proc(line: string, start: int, style: Style, allocator := context
 	}
 	end := bt + 1 + end_rel
 	data := line[bt + 1:end]
-	label := name if name != "" else data
-	disp: string
-	switch kind_label {
-	case "check", "radio":
-		disp = strings.concatenate({"[ ] ", label}, allocator)
-	case:
-		shown := value if value != "" else data
-		if masked {
-			n := min(width, max(1, len(shown)))
-			stars, _ := strings.repeat("*", n, context.temp_allocator)
-			shown = stars
-		}
-		if len(shown) > width {
-			shown = shown[:width]
-		}
-		disp = strings.concatenate({"[", label, "=", shown, "]"}, allocator)
+
+	field_name := strings.clone(name, allocator)
+	field_label := ""
+	field_value := ""
+	switch kind {
+	case .Checkbox, .Radio:
+		field_value = strings.clone(value if value != "" else data, allocator)
+		field_label = strings.clone(data if data != "" else name, allocator)
+	case .Text, .None:
+		field_value = strings.clone(data if data != "" else value, allocator)
+		field_label = strings.clone(name if name != "" else data, allocator)
 	}
+
+	disp := field_display_text(kind, field_label, field_value, width, masked, prechecked, allocator)
 	text := sanitize_text_runes(disp, allocator)
 	delete(disp)
 	return end - start + 1, Span{
 		kind = .Field,
 		text = text,
 		style = style,
+		field_kind = kind,
+		field_name = field_name,
+		field_value = field_value,
+		field_label = field_label,
+		field_width = width,
+		field_masked = masked,
+		field_prechecked = prechecked,
 	}, true
+}
+
+field_display_text :: proc(
+	kind: Field_Kind,
+	label, value: string,
+	width: int,
+	masked: bool,
+	checked: bool,
+	allocator := context.allocator,
+) -> string {
+	switch kind {
+	case .Checkbox, .Radio:
+		mark := "[x] " if checked else "[ ] "
+		lab := label if label != "" else value
+		return strings.concatenate({mark, lab}, allocator)
+	case .Text, .None:
+		shown := value
+		if masked {
+			n := min(max(1, width), max(1, len(shown)))
+			if len(shown) == 0 {
+				n = min(width, 1)
+			}
+			stars, _ := strings.repeat("*", n, context.temp_allocator)
+			shown = stars
+		}
+		w := max(1, width)
+		if len(shown) > w {
+			shown = shown[:w]
+		}
+		lab := label if label != "" else "field"
+		return strings.concatenate({"[", lab, "=", shown, "]"}, allocator)
+	}
+	return strings.clone("", allocator)
 }
