@@ -611,8 +611,11 @@ directory_hops :: proc(d: ^Directory, dest: [HASH_LEN]u8) -> u8 {
 	return 0
 }
 
-// Apply hops learned from a real path/link (0 means direct, not unknown).
+// Apply hops learned from a real path/link. Ignore 0 (usually unset in librns).
 directory_apply_path_hops :: proc(d: ^Directory, dest: [HASH_LEN]u8, hops: u8) {
+	if hops == 0 {
+		return
+	}
 	for &p in d.peers {
 		if p.hash == dest {
 			if !p.hops_known || p.hops != hops {
@@ -625,9 +628,9 @@ directory_apply_path_hops :: proc(d: ^Directory, dest: [HASH_LEN]u8, hops: u8) {
 	}
 }
 
-// Format hops for UI. Unknown announce hops show as hops=?.
+// Format hops for UI. Zero is treated as unknown (librns often leaves the field unset).
 format_peer_hops :: proc(hops: u8, known := true) -> string {
-	if !known {
+	if !known || hops == 0 {
 		return "hops=?"
 	}
 	return fmt.tprintf("hops=%d", hops)
