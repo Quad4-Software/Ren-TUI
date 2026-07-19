@@ -182,7 +182,7 @@ draw_network :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	view := NET_VIEW_LABELS[int(a.net_view)]
 	ui.buffer_text(buf, right.x + 1, right.y, fmt.tprintf("View: %s", view), t.title, t.bg)
 	ui.buffer_text(buf, right.x + 1, right.y + 1, "l LXMF   n NomadNet   p Propagation", t.muted, t.bg)
-	ui.buffer_text(buf, right.x + 1, right.y + 2, "/ search   Enter open node page", t.muted, t.bg)
+	ui.buffer_text(buf, right.x + 1, right.y + 2, "/ search   Enter/click open Nomad page", t.muted, t.bg)
 	q := strings.trim_space(ui.input_value(&a.net_search))
 	if q != "" || a.net_searching {
 		ui.buffer_text(buf, right.x + 1, right.y + 4, truncate(fmt.tprintf("filter: %s", q if q != "" else "..."), right.w - 2), t.highlight_fg, t.bg)

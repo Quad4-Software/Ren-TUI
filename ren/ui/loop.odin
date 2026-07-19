@@ -9,12 +9,17 @@ Redraw only when the app marks itself dirty.
 package ui
 
 Loop :: struct {
-	term:   Term,
-	buf:    Buffer,
-	quit:   bool,
-	status: string,
-	theme:  Theme,
-	caps:   Caps,
+	term:       Term,
+	buf:        Buffer,
+	quit:       bool,
+	status:     string,
+	theme:      Theme,
+	caps:       Caps,
+	force_full: bool,
+}
+
+loop_request_full_redraw :: proc(l: ^Loop) {
+	l.force_full = true
 }
 
 loop_init :: proc(l: ^Loop, preferred_color := "", enable_mouse := true) -> bool {
@@ -51,6 +56,11 @@ loop_run :: proc(l: ^Loop, draw: Draw_Proc, on_event: Event_Proc, user: rawptr, 
 		if l.buf.width != l.term.width || l.buf.height != l.term.height {
 			buffer_resize(&l.buf, l.term.width, l.term.height)
 			force = true
+		}
+		if l.force_full {
+			force = true
+			term_invalidate(&l.term)
+			l.force_full = false
 		}
 		dirty := force
 		if !dirty && is_dirty != nil {

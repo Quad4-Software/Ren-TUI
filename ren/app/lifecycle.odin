@@ -9,6 +9,7 @@ package app
 
 import "core:fmt"
 import "core:path/filepath"
+import "core:strings"
 import "core:time"
 
 import "ren:cli"
@@ -122,6 +123,15 @@ update_status :: proc(a: ^App) {
 		return
 	}
 	a.status_hold_len = 0
+	// Page view stays free of announce directory stats (hot/cold/ann).
+	if a.tab == .Page {
+		if a.online {
+			a.status_right = a.session.status if a.session.status != "" else "online"
+		} else {
+			a.status_right = "offline"
+		}
+		return
+	}
 	if a.online {
 		stats := net.session_stats_line(&a.session, &a.directory, context.temp_allocator)
 		a.status_right = fmt.tprintf("%s  %s", a.session.status, stats)
@@ -129,6 +139,20 @@ update_status :: proc(a: ^App) {
 		a.status_right = a.session.status if a.session.status != "" else "offline"
 	}
 }
+
+// True when Page-tab status omits directory announce stats (hot/cold/ann).
+page_status_omits_announce_stats :: proc(a: ^App) -> bool {
+	update_status(a)
+	s := a.status_right
+	if strings.contains(s, "hot:") || strings.contains(s, "cold:") {
+		return false
+	}
+	if strings.contains(s, "ann:") {
+		return false
+	}
+	return true
+}
+
 run :: proc(opts: ^cli.Options = nil) -> int {
 	a: App
 	if !app_init(&a, opts) {

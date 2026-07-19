@@ -39,8 +39,8 @@ MIN_ANNOUNCE_INTERVAL_SEC :: 30
 
 // Timeouts (seconds)
 STATUS_HOLD_SEC :: 8
-LINK_TIMEOUT_SEC :: 20
-PAGE_TIMEOUT_SEC :: 30
+LINK_TIMEOUT_SEC :: 30
+PAGE_TIMEOUT_SEC :: 90
 LISTEN_DEFAULT_SEC :: 30
 
 // NomadNet page fetch / render guards
@@ -51,9 +51,10 @@ PAGE_MAX_LINE_LEN :: 512
 
 // Path finder: keep recent destinations hot for link open
 PATH_CACHE_MAX :: 15
-PATH_TTL_SEC :: 30 * 60
-PATH_FIND_TIMEOUT_SEC :: 20
+PATH_TTL_SEC :: 90
+PATH_FIND_TIMEOUT_SEC :: 45
 PATH_RETRY_SEC :: 3
+PATH_TABLE_CAP :: 512
 
 // Environment
 ENV_RNS_CONFIG :: "REN_RNS_CONFIG"

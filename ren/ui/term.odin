@@ -195,6 +195,10 @@ write_sgr :: proc(b: ^strings.Builder, fg, bg: Color, style: Style) {
 	strings.write_string(b, "m")
 }
 
+term_invalidate :: proc(t: ^Term) {
+	t.has_prev = false
+}
+
 term_present :: proc(t: ^Term, buf: ^Buffer) {
 	term_query_size(t)
 	if buf.width != t.width || buf.height != t.height {

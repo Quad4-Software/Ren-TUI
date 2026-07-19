@@ -30,7 +30,7 @@ try_fetch_selected_node :: proc(a: ^App) {
 		ui.input_clear(&a.compose_to)
 		strings.write_string(&a.compose_to.text, hex)
 		a.compose_to.cursor = len(hex)
-		a.tab = .Compose
+		switch_tab(a, .Compose)
 		a.compose_focus = 1
 		set_status(a, "compose to selected peer", STATUS_HOLD)
 		return
@@ -120,6 +120,6 @@ open_lxmf_peer :: proc(a: ^App, peer: [store.HASH_LEN]u8) {
 	ui.input_clear(&a.compose_to)
 	strings.write_string(&a.compose_to.text, hex)
 	a.compose_to.cursor = len(hex)
-	a.tab = .Conversations
+	switch_tab(a, .Conversations)
 	set_status(a, "opened LXMF conversation", STATUS_HOLD)
 }

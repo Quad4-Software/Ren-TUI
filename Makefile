@@ -178,6 +178,7 @@ test-chaos: git-commit $(BIN_LIBRNS)
 
 test-interop:
 	python3 tests/interop/python_lxmf_interop.py
+	python3 tests/interop/python_nomad_page_interop.py
 
 test-live: $(LISTEN)
 	./$(LISTEN) -t $(LIVE_SECS) $${REN_RNS_CONFIG:+-c $$REN_RNS_CONFIG}

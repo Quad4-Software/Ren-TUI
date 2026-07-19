@@ -165,7 +165,7 @@ page_fetch :: proc(
 		set_status(a, a.session.status if a.session.status != "" else "fetch failed", STATUS_HOLD)
 		return
 	}
-	a.tab = .Page
+	switch_tab(a, .Page)
 	set_status(a, net.session_page_status(&a.session), time.Duration(constants.PAGE_TIMEOUT_SEC) * time.Second)
 }
 
@@ -188,7 +188,7 @@ page_poll_result :: proc(a: ^App) {
 	}
 	defer delete(content)
 	page_apply_content(a, node, path, content)
-	a.tab = .Page
+	switch_tab(a, .Page)
 	truncated := ""
 	if strings.contains(a.session.status, "truncated") || len(content) >= constants.PAGE_MAX_BYTES {
 		truncated = " truncated"

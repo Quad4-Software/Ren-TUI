@@ -20,7 +20,10 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 	page_poll_result(a)
 	handle_session_events(a)
 	if a.session.announces > prev_ann {
-		set_status(a, fmt.tprintf("announced (#%d)", a.session.announces), STATUS_HOLD)
+		// Keep announce toasts off Page so network noise does not paint over the page.
+		if a.tab != .Page && !net.session_page_busy(&a.session) {
+			set_status(a, fmt.tprintf("announced (#%d)", a.session.announces), STATUS_HOLD)
+		}
 		mark_dirty(a)
 	}
 	// Rebuild lists when directory changed while on Network (incl. while away then returned).
@@ -132,21 +135,21 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		if a.tab != .Compose {
 			switch ev.ch {
 			case '1':
-				a.tab = .Conversations
+				switch_tab(a, .Conversations)
 				refresh_conv_list(a)
 			case '2':
 				show_network_tab(a)
 			case '3':
-				a.tab = .Page
+				switch_tab(a, .Page)
 			case '4':
-				a.tab = .Interfaces
+				switch_tab(a, .Interfaces)
 			case '5':
-				a.tab = .Compose
+				switch_tab(a, .Compose)
 			case '6':
-				a.tab = .Config
+				switch_tab(a, .Config)
 				refresh_config_list(a)
 			case '7':
-				a.tab = .Guide
+				switch_tab(a, .Guide)
 			case '/':
 				if a.tab == .Network {
 					a.net_searching = true
@@ -205,7 +208,7 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			page_cycle_link(a, 1)
 			return false
 		}
-		a.tab = Tab((int(a.tab) + 1) % TAB_COUNT)
+		switch_tab(a, Tab((int(a.tab) + 1) % TAB_COUNT))
 		switch a.tab {
 		case .Network:
 			show_network_tab(a)
@@ -221,7 +224,7 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			page_cycle_link(a, -1)
 			return false
 		}
-		a.tab = Tab((int(a.tab) + TAB_COUNT - 1) % TAB_COUNT)
+		switch_tab(a, Tab((int(a.tab) + TAB_COUNT - 1) % TAB_COUNT))
 		switch a.tab {
 		case .Network:
 			show_network_tab(a)
@@ -370,6 +373,9 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 		case .Network:
 			ui.list_click(&a.net_list, row, network_list_visible(a))
 			network_skip_header(a, 1, network_list_visible(a))
+			if network_selected_is_nomad(a) {
+				try_fetch_selected_node(a)
+			}
 		case .Config:
 			ui.list_click(&a.config_list, row, visible)
 		case .Interfaces, .Compose, .Guide, .Page:
@@ -443,7 +449,7 @@ click_tab :: proc(a: ^App, x: int) {
 	for label, i in TAB_LABELS {
 		w := len(label)
 		if x >= cx && x < cx + w {
-			a.tab = Tab(i)
+			switch_tab(a, Tab(i))
 			switch a.tab {
 			case .Network:
 				show_network_tab(a)
@@ -453,9 +459,20 @@ click_tab :: proc(a: ^App, x: int) {
 				refresh_config_list(a)
 			case .Page, .Interfaces, .Compose, .Guide:
 			}
-			mark_dirty(a)
 			return
 		}
 		cx += w + 2
 	}
+}
+
+network_selected_is_nomad :: proc(a: ^App) -> bool {
+	row := a.net_list.selected
+	if row < 0 || row >= len(a.net_peer_idx) {
+		return false
+	}
+	idx := a.net_peer_idx[row]
+	if idx < 0 || idx >= len(a.directory.peers) {
+		return false
+	}
+	return a.directory.peers[idx].kind == .Nomad_Node
 }
