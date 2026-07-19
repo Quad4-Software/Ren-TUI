@@ -93,6 +93,8 @@ page_merge_form_request :: proc(a: ^App, req: ^micron.Request_Data, field_spec: 
 	if req == nil || field_spec == "" {
 		return
 	}
+	// NomadNet Browser.handle_link applies name=value as var_* before form fields.
+	micron.merge_link_var_spec(req, field_spec)
 	inputs := page_form_as_micron_inputs(a)
 	all := micron.collect_form_fields(inputs)
 	defer micron.form_fields_map_destroy(&all)

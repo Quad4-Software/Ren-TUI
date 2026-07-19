@@ -120,6 +120,46 @@ test_micron_resolve_request_vars_and_relative :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_micron_resolve_cicada_board_urls :: proc(t: ^testing.T) {
+	boards := "c1c4d4deec691ad364853ff6c06879ff:/page/boards.mu`dont_cache=1784484782"
+	act := micron.resolve_link(boards, {}, false)
+	defer micron.action_destroy(&act)
+	testing.expect_value(t, act.kind, micron.Action_Kind.Page)
+	testing.expect_value(t, act.path, "/page/boards.mu")
+	testing.expect(t, len(act.request.vars) == 1)
+	testing.expect_value(t, act.request.vars[0].key, "dont_cache")
+	testing.expect_value(t, act.request.vars[0].value, "1784484782")
+	payload := micron.encode_request_data(act.request)
+	defer delete(payload)
+	testing.expect(t, len(payload) > 0)
+
+	read := "c1c4d4deec691ad364853ff6c06879ff:/page/read_board.mu`board_name=all|key=anonymous"
+	act2 := micron.resolve_link(read, {}, false)
+	defer micron.action_destroy(&act2)
+	testing.expect_value(t, act2.kind, micron.Action_Kind.Page)
+	testing.expect_value(t, act2.path, "/page/read_board.mu")
+	testing.expect(t, len(act2.request.vars) == 2)
+	payload2 := micron.encode_request_data(act2.request)
+	defer delete(payload2)
+	testing.expect(t, len(payload2) > 0)
+}
+
+@(test)
+test_micron_merge_link_var_spec_nomadnet_parity :: proc(t: ^testing.T) {
+	req: micron.Request_Data
+	micron.request_data_init(&req)
+	defer micron.request_data_destroy(&req)
+	micron.merge_link_var_spec(&req, "board_name=all|key=anonymous|field.user=alice")
+	testing.expect(t, len(req.vars) == 2)
+	testing.expect(t, len(req.fields) == 1)
+	testing.expect_value(t, req.fields[0].key, "user")
+	testing.expect_value(t, req.fields[0].value, "alice")
+	// second merge must not duplicate
+	micron.merge_link_var_spec(&req, "board_name=all|key=anonymous")
+	testing.expect(t, len(req.vars) == 2)
+}
+
+@(test)
 test_micron_parse_link_folds_field_spec :: proc(t: ^testing.T) {
 	src := "`[Forum`/page/forum.mu`cat=gen|field.msg=hi]"
 	doc := micron.parse(src)

@@ -100,11 +100,33 @@ def check_empty_payload_is_nil() -> None:
     print("ok empty page request payload is nil")
 
 
+def check_destination_backtick_request_vars() -> None:
+    """NomadNet destination form hash:/path`a=1|b=2 → path + var_* map."""
+    url = "c1c4d4deec691ad364853ff6c06879ff:/page/read_board.mu`board_name=all|key=anonymous"
+    bt = url.find("`")
+    assert bt > 0
+    base, spec = url[:bt], url[bt + 1 :]
+    assert base.endswith("/page/read_board.mu")
+    assert "`" not in base
+    request_data = {}
+    for e in spec.split("|"):
+        if "=" in e:
+            k, v = e.split("=", 1)
+            request_data["var_" + k] = v
+    assert request_data == {"var_board_name": "all", "var_key": "anonymous"}
+    packed = pack_map_str_str(request_data)
+    decoded = msgpack.unpackb(packed, raw=False)
+    assert decoded == request_data
+    print("ok destination backtick request vars")
+    print("cicada_read_board_hex", packed.hex())
+
+
 def main() -> int:
     check_dest_hash_len()
     check_request_map_keys()
     check_link_request_third_element_is_dict()
     check_empty_payload_is_nil()
+    check_destination_backtick_request_vars()
     return 0
 
 

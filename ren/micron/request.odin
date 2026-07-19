@@ -195,8 +195,48 @@ form_fields_map_destroy :: proc(m: ^map[string]string) {
 	m^ = {}
 }
 
+request_has_var :: proc(req: Request_Data, key: string) -> bool {
+	for p in req.vars {
+		if p.key == key {
+			return true
+		}
+	}
+	return false
+}
+
+request_has_field :: proc(req: Request_Data, key: string) -> bool {
+	for p in req.fields {
+		if p.key == key {
+			return true
+		}
+	}
+	return false
+}
+
+// Merge name=value pairs from a NomadNet link field list into req (var_ / field_).
+// Matches Browser.handle_link: "=" entries become request vars (field.x → field_x).
+merge_link_var_spec :: proc(req: ^Request_Data, field_spec: string, allocator := context.allocator) {
+	if req == nil {
+		return
+	}
+	parsed := parse_request_spec(field_spec, context.temp_allocator)
+	for p in parsed.vars {
+		if request_has_var(req^, p.key) {
+			continue
+		}
+		append(&req.vars, Request_Pair{strings.clone(p.key, allocator), strings.clone(p.value, allocator)})
+	}
+	for p in parsed.fields {
+		if request_has_field(req^, p.key) {
+			continue
+		}
+		append(&req.fields, Request_Pair{strings.clone(p.key, allocator), strings.clone(p.value, allocator)})
+	}
+}
+
 // Select fields from all_fields using field_spec (* = all, else named list).
 // Matches micron-parser-go BuildRequestPayload field selection.
+// name=value entries are ignored here (use merge_link_var_spec).
 merge_form_fields_into_request :: proc(
 	req: ^Request_Data,
 	all_fields: map[string]string,
@@ -212,6 +252,9 @@ merge_form_fields_into_request :: proc(
 	}
 	if spec == "*" {
 		for k, v in all_fields {
+			if request_has_field(req^, k) {
+				continue
+			}
 			append(&req.fields, Request_Pair{strings.clone(k, allocator), strings.clone(v, allocator)})
 		}
 		return
@@ -220,11 +263,17 @@ merge_form_fields_into_request :: proc(
 	for n in names {
 		if n == "*" {
 			for k, v in all_fields {
+				if request_has_field(req^, k) {
+					continue
+				}
 				append(&req.fields, Request_Pair{strings.clone(k, allocator), strings.clone(v, allocator)})
 			}
 			return
 		}
 		if strings.index_byte(n, '=') >= 0 {
+			continue
+		}
+		if request_has_field(req^, n) {
 			continue
 		}
 		if v, ok := all_fields[n]; ok {

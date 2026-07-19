@@ -25,12 +25,22 @@ refresh_lists :: proc(a: ^App) {
 }
 
 refresh_conv_list :: proc(a: ^App) {
-	prev_conv := a.conv_list.selected
-	prev_conv_scroll := a.conv_list.scroll
+	prev_sel := a.conv_list.selected
+	prev_scroll := a.conv_list.scroll
+	keep_hash: [store.HASH_LEN]u8
+	have_keep := false
+	if prev_sel >= 0 && prev_sel < len(a.conv_peer_idx) {
+		pi := a.conv_peer_idx[prev_sel]
+		if pi >= 0 && pi < len(a.conversations.items) {
+			keep_hash = a.conversations.items[pi].peer_hash
+			have_keep = true
+		}
+	}
 	ui.list_clear(&a.conv_list)
+	clear(&a.conv_peer_idx)
 	q := strings.to_lower(strings.trim_space(ui.input_value(&a.conv_search)), context.temp_allocator)
-	for conv in a.conversations.items {
-		label := store.directory_label(&a.directory, conv.peer_hash)
+	for conv, i in a.conversations.items {
+		label := store.conversation_label(&a.directory, conv)
 		hex := store.hash_hex(conv.peer_hash, context.temp_allocator)
 		if q != "" {
 			lq := strings.to_lower(label, context.temp_allocator)
@@ -44,13 +54,37 @@ refresh_conv_list :: proc(a: ^App) {
 			unread = fmt.tprintf(" (%d)", conv.unread)
 		}
 		ui.list_push(&a.conv_list, fmt.tprintf("%s%s", label, unread))
+		append(&a.conv_peer_idx, i)
 		delete(label)
 	}
-	if len(a.conv_list.items) > 0 {
-		a.conv_list.selected = clamp(prev_conv, 0, len(a.conv_list.items) - 1)
-		a.conv_list.scroll = clamp(prev_conv_scroll, 0, max(0, len(a.conv_list.items) - 1))
-		ui.list_ensure_visible(&a.conv_list, max(1, a.list_rect.h))
+	if len(a.conv_list.items) == 0 {
+		return
 	}
+	if have_keep {
+		for idx, row in a.conv_peer_idx {
+			if a.conversations.items[idx].peer_hash == keep_hash {
+				a.conv_list.selected = row
+				a.conv_list.scroll = clamp(prev_scroll, 0, max(0, len(a.conv_list.items) - 1))
+				ui.list_ensure_visible(&a.conv_list, max(1, a.list_rect.h))
+				return
+			}
+		}
+	}
+	a.conv_list.selected = clamp(prev_sel, 0, len(a.conv_list.items) - 1)
+	a.conv_list.scroll = clamp(prev_scroll, 0, max(0, len(a.conv_list.items) - 1))
+	ui.list_ensure_visible(&a.conv_list, max(1, a.list_rect.h))
+}
+
+conv_selected_store_idx :: proc(a: ^App) -> int {
+	row := a.conv_list.selected
+	if row < 0 || row >= len(a.conv_peer_idx) {
+		return -1
+	}
+	idx := a.conv_peer_idx[row]
+	if idx < 0 || idx >= len(a.conversations.items) {
+		return -1
+	}
+	return idx
 }
 
 refresh_config_list :: proc(a: ^App) {

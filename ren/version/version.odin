@@ -3,6 +3,7 @@
 
 /*
 Version string helpers with git commit and build date.
+Commit and date are injected at compile time via -define (see Makefile).
 */
 
 package version
@@ -12,8 +13,8 @@ import "core:fmt"
 import "ren:constants"
 
 VERSION :: constants.VERSION
-GIT_COMMIT :: "4c0d6ba"
-BUILD_DATE :: "2026-07-19T16:23Z"
+GIT_COMMIT :: #config(REN_GIT_COMMIT, "unknown")
+BUILD_DATE :: #config(REN_BUILD_DATE, "unknown")
 
 full :: proc(allocator := context.allocator) -> string {
 	return fmt.aprintf("%s+%s", VERSION, GIT_COMMIT, allocator = allocator)

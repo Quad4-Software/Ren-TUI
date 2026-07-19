@@ -101,11 +101,12 @@ conversations_encode_peer :: proc(conv: ^Conversation) -> ([]u8, bool) {
 	lxmf.writer_init(&w)
 	defer lxmf.writer_destroy(&w)
 
-	lxmf.write_array_header(&w, 5)
+	lxmf.write_array_header(&w, 6)
 	lxmf.write_int(&w, i64(constants.CONVERSATIONS_SCHEMA_VERSION))
 	lxmf.write_bin(&w, conv.peer_hash[:])
 	lxmf.write_str(&w, conv.title)
 	lxmf.write_int(&w, i64(conv.unread))
+	lxmf.write_str(&w, conv.custom_name)
 	lxmf.write_array_header(&w, len(conv.messages))
 	for m in conv.messages {
 		lxmf.write_array_header(&w, 9)
@@ -137,14 +138,22 @@ conversations_decode_file :: proc(c: ^Conversations, peer: [HASH_LEN]u8, data: [
 	title_i := 1
 	unread_i := 2
 	msgs_i := 3
+	custom_i := -1
+	ver: i64 = 0
 	if len(root.array) >= 5 {
-		if ver, vok := lxmf.as_int(root.array[0]); vok {
-			if ver < 1 || ver > i64(constants.CONVERSATIONS_SCHEMA_VERSION) {
+		if v, vok := lxmf.as_int(root.array[0]); vok {
+			if v < 1 || v > i64(constants.CONVERSATIONS_SCHEMA_VERSION) {
 				return false
 			}
+			ver = v
 			title_i = 2
 			unread_i = 3
-			msgs_i = 4
+			if ver >= 2 && len(root.array) >= 6 {
+				custom_i = 4
+				msgs_i = 5
+			} else {
+				msgs_i = 4
+			}
 		}
 	}
 
@@ -158,6 +167,14 @@ conversations_decode_file :: proc(c: ^Conversations, peer: [HASH_LEN]u8, data: [
 	if n, ok := lxmf.as_int(root.array[unread_i]); ok {
 		unread = int(n)
 	}
+	custom := ""
+	if custom_i >= 0 {
+		if root.array[custom_i].kind == .Str {
+			custom = root.array[custom_i].str
+		} else if b, ok := lxmf.as_bytes(root.array[custom_i]); ok {
+			custom = string(b)
+		}
+	}
 	msgs_v := root.array[msgs_i]
 	if msgs_v.kind != .Array {
 		return false
@@ -165,6 +182,10 @@ conversations_decode_file :: proc(c: ^Conversations, peer: [HASH_LEN]u8, data: [
 
 	conv := conversations_get_or_create(c, peer, title if title != "" else hash_hex(peer, context.temp_allocator))
 	conv.unread = unread
+	if custom != "" {
+		delete(conv.custom_name)
+		conv.custom_name = sanitize_display_label(custom)
+	}
 	for item in msgs_v.array {
 		if item.kind != .Array || len(item.array) < 9 {
 			continue
@@ -207,6 +228,7 @@ conversations_decode_file :: proc(c: ^Conversations, peer: [HASH_LEN]u8, data: [
 		}
 		append(&conv.messages, msg)
 	}
+	_ = ver
 	return true
 }
 

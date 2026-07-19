@@ -38,10 +38,11 @@ Peer :: struct {
 }
 
 Conversation :: struct {
-	peer_hash: [HASH_LEN]u8,
-	title:     string,
-	messages:  [dynamic]Stored_Message,
-	unread:    int,
+	peer_hash:   [HASH_LEN]u8,
+	title:       string,
+	custom_name: string,
+	messages:    [dynamic]Stored_Message,
+	unread:      int,
 }
 
 Stored_Message :: struct {
@@ -630,6 +631,7 @@ directory_upsert :: proc(
 		d.heard_other += 1
 	}
 	directory_enforce_hot_cap(d)
+	_ = directory_save_all(d)
 }
 
 sanitize_display_label :: proc(name: string, allocator := context.allocator) -> string {
@@ -713,6 +715,26 @@ directory_label :: proc(d: ^Directory, hash: [HASH_LEN]u8, allocator := context.
 	return hash_hex(hash, allocator)
 }
 
+// Display order: custom_name > announce display_name > title > hex.
+conversation_label :: proc(
+	d: ^Directory,
+	conv: Conversation,
+	allocator := context.allocator,
+) -> string {
+	if conv.custom_name != "" {
+		return strings.clone(conv.custom_name, allocator)
+	}
+	for p in d.peers {
+		if p.hash == conv.peer_hash && p.display_name != "" {
+			return strings.clone(p.display_name, allocator)
+		}
+	}
+	if conv.title != "" {
+		return strings.clone(conv.title, allocator)
+	}
+	return hash_hex(conv.peer_hash, allocator)
+}
+
 hash_hex :: proc(hash: [HASH_LEN]u8, allocator := context.allocator) -> string {
 	h := hash
 	encoded, err := hex.encode(h[:], allocator)
@@ -733,6 +755,7 @@ conversations_init :: proc(c: ^Conversations) {
 conversations_destroy :: proc(c: ^Conversations) {
 	for &conv in c.items {
 		delete(conv.title)
+		delete(conv.custom_name)
 		for &m in conv.messages {
 			delete(m.title)
 			delete(m.content)
@@ -778,4 +801,27 @@ conversations_add_message :: proc(c: ^Conversations, peer: [HASH_LEN]u8, msg: St
 conversations_add_message_persist :: proc(c: ^Conversations, cfg: ^Config, peer: [HASH_LEN]u8, msg: Stored_Message, title: string) {
 	conversations_add_message(c, peer, msg, title)
 	_ = conversations_save_peer(c, cfg, peer)
+}
+
+conversations_clear_unread :: proc(c: ^Conversations, peer: [HASH_LEN]u8) -> bool {
+	idx := conversations_index_of(c, peer)
+	if idx < 0 {
+		return false
+	}
+	if c.items[idx].unread == 0 {
+		return false
+	}
+	c.items[idx].unread = 0
+	return true
+}
+
+conversations_set_custom_name :: proc(c: ^Conversations, peer: [HASH_LEN]u8, name: string) -> bool {
+	idx := conversations_index_of(c, peer)
+	if idx < 0 {
+		return false
+	}
+	delete(c.items[idx].custom_name)
+	safe := sanitize_display_label(name)
+	c.items[idx].custom_name = safe
+	return true
 }

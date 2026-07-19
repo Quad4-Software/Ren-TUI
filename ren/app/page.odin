@@ -29,6 +29,7 @@ page_clear :: proc(a: ^App) {
 	a.page_source = ""
 	delete(a.page_path)
 	a.page_path = ""
+	micron.request_data_destroy(&a.page_request)
 	delete(a.page_error)
 	a.page_error = ""
 	a.page_node = {}
@@ -58,8 +59,25 @@ page_sanitize_bytes :: proc(data: []u8, allocator := context.allocator) -> strin
 }
 
 page_path_allowed :: proc(path: string) -> bool {
-	if path == "" || !strings.has_prefix(path, "/page/") {
+	return nomad_path_allowed(path, false)
+}
+
+file_path_allowed :: proc(path: string) -> bool {
+	return nomad_path_allowed(path, true)
+}
+
+nomad_path_allowed :: proc(path: string, want_file: bool) -> bool {
+	if path == "" {
 		return false
+	}
+	if want_file {
+		if !strings.has_prefix(path, "/file/") {
+			return false
+		}
+	} else {
+		if !strings.has_prefix(path, "/page/") {
+			return false
+		}
 	}
 	if strings.contains(path, "..") {
 		return false
@@ -114,6 +132,10 @@ page_parse_url :: proc(s: string) -> (hash: [store.HASH_LEN]u8, has_hash: bool, 
 
 page_url_default :: proc(a: ^App, allocator := context.allocator) -> string {
 	path := a.page_path if a.page_path != "" else constants.DEFAULT_PAGE_PATH
+	suffix := micron.format_request_suffix(a.page_request, context.temp_allocator)
+	if suffix != "" {
+		path = strings.concatenate({path, "`", suffix}, context.temp_allocator)
+	}
 	if a.page_has_node {
 		hex := store.hash_hex(a.page_node, context.temp_allocator)
 		return fmt.aprintf("%s:%s", hex, path, allocator = allocator)
@@ -133,7 +155,9 @@ page_url_default :: proc(a: ^App, allocator := context.allocator) -> string {
 }
 
 page_apply_content :: proc(a: ^App, node: [store.HASH_LEN]u8, path: string, data: []u8) {
+	kept := micron.request_data_clone(a.page_request)
 	page_clear(a)
+	a.page_request = kept
 	a.page_node = node
 	a.page_has_node = true
 	a.page_path = strings.clone(path)
@@ -144,6 +168,17 @@ page_apply_content :: proc(a: ^App, node: [store.HASH_LEN]u8, path: string, data
 	a.page_link_focus = 0 if a.page_doc.link_count > 0 else -1
 	clear(&a.page_hits)
 	page_form_init_from_doc(a)
+}
+
+page_remember_request :: proc(a: ^App, req: micron.Request_Data) {
+	if micron.request_data_empty(req) {
+		micron.request_data_destroy(&a.page_request)
+		return
+	}
+	// Clone before destroy so callers can pass a.page_request itself.
+	cloned := micron.request_data_clone(req)
+	micron.request_data_destroy(&a.page_request)
+	a.page_request = cloned
 }
 
 page_fetch :: proc(
@@ -163,7 +198,7 @@ page_fetch :: proc(
 		set_status(a, "bad page path", STATUS_HOLD)
 		return
 	}
-	// Cancel in-flight fetch so opening another node mid-link replaces the job.
+	_ = store.directory_promote_from_spill(&a.directory, node)
 	if net.session_page_busy(&a.session) {
 		net.session_page_cancel(&a.session)
 	}
@@ -177,7 +212,35 @@ page_fetch :: proc(
 		set_status(a, msg, STATUS_HOLD)
 		return
 	}
+	page_remember_request(a, req)
 	switch_tab(a, .Page)
+	set_status(a, net.session_page_status(&a.session), time.Duration(constants.PAGE_TIMEOUT_SEC) * time.Second)
+}
+
+file_fetch :: proc(
+	a: ^App,
+	node: [store.HASH_LEN]u8,
+	path: string,
+	req: micron.Request_Data = {},
+) {
+	if !a.online {
+		set_status(a, "offline", STATUS_HOLD)
+		return
+	}
+	if !file_path_allowed(path) {
+		set_status(a, "bad file path", STATUS_HOLD)
+		return
+	}
+	_ = store.directory_promote_from_spill(&a.directory, node)
+	if net.session_page_busy(&a.session) {
+		net.session_page_cancel(&a.session)
+	}
+	payload := micron.encode_request_data(req)
+	defer delete(payload)
+	if !net.session_page_begin(&a.session, node, path, payload, false) {
+		set_status(a, a.session.status if a.session.status != "" else "file fetch failed", STATUS_HOLD)
+		return
+	}
 	set_status(a, net.session_page_status(&a.session), time.Duration(constants.PAGE_TIMEOUT_SEC) * time.Second)
 }
 
@@ -193,11 +256,30 @@ page_poll_result :: proc(a: ^App) {
 		set_status(a, msg, time.Duration(constants.PAGE_TIMEOUT_SEC) * time.Second)
 		return
 	}
-	content, path, node, ok, finished := net.session_page_take(&a.session)
+	content, path, node, ok, finished, is_file := net.session_page_take(&a.session)
 	if !finished {
 		return
 	}
 	defer delete(path)
+	if is_file {
+		defer delete(content)
+		if !ok {
+			msg := a.session.status if a.session.status != "" else "file download failed"
+			set_status(a, msg, STATUS_HOLD)
+			return
+		}
+		name := net.file_basename_from_path(path)
+		dir := store.config_download_dir(&a.cfg)
+		defer delete(dir)
+		out, wok := page_write_bytes(dir, name, content)
+		if !wok {
+			set_status(a, "file save failed", STATUS_HOLD)
+			return
+		}
+		defer delete(out)
+		set_status(a, fmt.tprintf("downloaded %s", out), STATUS_HOLD)
+		return
+	}
 	if !ok {
 		msg := a.session.status if a.session.status != "" else "page fetch failed"
 		a.page_node = node
@@ -244,21 +326,47 @@ page_apply_url_edit :: proc(a: ^App) {
 	val := strings.trim_space(ui.input_value(&a.url_edit))
 	a.url_editing = false
 	ui.input_clear(&a.url_edit)
-	act := micron.resolve_link(
-		val if strings.contains(val, "://") || strings.index_byte(val, '`') >= 0 else (
-			strings.concatenate({"nomadnetwork://", val}, context.temp_allocator)
-		),
-		a.page_node,
-		a.page_has_node,
-	)
+	resolve_arg := val
+	if !strings.contains(val, "://") {
+		resolve_arg = strings.concatenate({"nomadnetwork://", val}, context.temp_allocator)
+	}
+	act := micron.resolve_link(resolve_arg, a.page_node, a.page_has_node)
 	defer micron.action_destroy(&act)
 	if act.kind == .Page && act.has_node {
 		page_fetch(a, act.node, act.path, act.request)
 		return
 	}
+	if act.kind == .File && act.has_node {
+		file_fetch(a, act.node, act.path, act.request)
+		return
+	}
+	// Relative page/file without a current node: use selected NomadNet peer as base.
+	if (act.kind == .Reject || act.kind == .None) && !a.page_has_node {
+		row := a.net_list.selected
+		if row >= 0 && row < len(a.net_peer_idx) {
+			idx := a.net_peer_idx[row]
+			if idx >= 0 && idx < len(a.directory.peers) && a.directory.peers[idx].kind == .Nomad_Node {
+				base := a.directory.peers[idx].hash
+				act2 := micron.resolve_link(resolve_arg, base, true)
+				defer micron.action_destroy(&act2)
+				if act2.kind == .Page && act2.has_node {
+					page_fetch(a, act2.node, act2.path, act2.request)
+					return
+				}
+				if act2.kind == .File && act2.has_node {
+					file_fetch(a, act2.node, act2.path, act2.request)
+					return
+				}
+			}
+		}
+	}
+	// Last resort: path-only parse still keeps backtick request vars.
+	_, req := micron.split_destination_request(val)
+	defer micron.request_data_destroy(&req)
 	hash, has_hash, path, ok := page_parse_url(val)
 	if !ok {
-		set_status(a, "bad URL (hash:/path or /path)", STATUS_HOLD)
+		reason := act.reason if act.reason != "" else "bad URL (hash:/path or /path)"
+		set_status(a, reason, STATUS_HOLD)
 		return
 	}
 	defer if path != "" do delete(path)
@@ -281,7 +389,7 @@ page_apply_url_edit :: proc(a: ^App) {
 			node = a.directory.peers[idx].hash
 		}
 	}
-	page_fetch(a, node, path)
+	page_fetch(a, node, path, req)
 }
 
 page_line_count :: proc(a: ^App) -> int {
@@ -316,6 +424,12 @@ page_activate_url :: proc(a: ^App, url: string, field_spec := "") {
 			page_merge_form_request(a, &act.request, field_spec)
 		}
 		page_fetch(a, act.node, act.path, act.request)
+	case .File:
+		if !act.has_node {
+			set_status(a, "no node for file link", STATUS_HOLD)
+			return
+		}
+		file_fetch(a, act.node, act.path, act.request)
 	case .Lxmf:
 		open_lxmf_peer(a, act.peer)
 	case .External:
@@ -435,6 +549,10 @@ page_download :: proc(a: ^App) {
 }
 
 page_write_download :: proc(dir, filename, content: string, allocator := context.allocator) -> (path: string, ok: bool) {
+	return page_write_bytes(dir, filename, transmute([]u8)content, allocator)
+}
+
+page_write_bytes :: proc(dir, filename: string, content: []u8, allocator := context.allocator) -> (path: string, ok: bool) {
 	if dir == "" || filename == "" {
 		return "", false
 	}
@@ -443,7 +561,7 @@ page_write_download :: proc(dir, filename, content: string, allocator := context
 	}
 	final_path, _ := filepath.join({dir, filename}, allocator)
 	tmp_path := strings.concatenate({final_path, ".tmp"}, context.temp_allocator)
-	if os.write_entire_file(tmp_path, transmute([]u8)content) != nil {
+	if os.write_entire_file(tmp_path, content) != nil {
 		delete(final_path)
 		return "", false
 	}

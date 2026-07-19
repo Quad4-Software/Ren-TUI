@@ -40,17 +40,17 @@ LISTEN       := bin/ren-listen
 
 GIT_COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE    ?= $(shell date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || echo unknown)
-VERSION_ODIN  := ren/version/version.odin
+VERSION_DEFINES := -define:REN_GIT_COMMIT=$(GIT_COMMIT) -define:REN_BUILD_DATE=$(BUILD_DATE)
 
 ODIN_TEST_ENV := LIBRARY_PATH="$(VENDOR_LIB):$${LIBRARY_PATH:-}" LD_LIBRARY_PATH="$(ROOT)/bin:$${LD_LIBRARY_PATH:-}"
-ODIN_TEST_FLAGS := -collection:ren=$(ROOT)/ren -collection:rns=$(VENDOR_ODIN) $(LINKER_FLAGS)
+ODIN_TEST_FLAGS := -collection:ren=$(ROOT)/ren -collection:rns=$(VENDOR_ODIN) $(LINKER_FLAGS) $(VERSION_DEFINES)
 ODIN_TEST_SERIAL_FLAGS := $(ODIN_TEST_FLAGS) -define:ODIN_TEST_THREADS=1
 
 .PHONY: all clean install uninstall test \
 	test-smoke test-unit test-property test-fuzz test-acceptance \
 	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop \
 	test-oracle test-blackbox \
-	test-live run listen vendor-librns git-commit remotes help man check dist cross bench \
+	test-live run listen vendor-librns remotes help man check dist cross bench \
 	package package-deb package-rpm package-arch package-nix
 
 all: $(OUT) $(LISTEN)
@@ -95,10 +95,6 @@ help:
 		'' \
 		'Variables: PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) LIVE_SECS=$(LIVE_SECS) LIBC=$(LIBC) TARGET= RNS_ROOT='
 
-git-commit:
-	@sed -i 's/^GIT_COMMIT :: ".*"/GIT_COMMIT :: "$(GIT_COMMIT)"/' $(VERSION_ODIN)
-	@sed -i 's/^BUILD_DATE :: ".*"/BUILD_DATE :: "$(BUILD_DATE)"/' $(VERSION_ODIN)
-
 $(BIN_LIBRNS): $(LIBRNS)
 ifeq ($(LIBC),musl)
 	mkdir -p bin
@@ -107,15 +103,15 @@ else
 	cp -f $(LIBRNS) $(BIN_LIBRNS)
 endif
 
-$(OUT): git-commit cmd/ren-tui/main.odin $(shell find ren -name '*.odin' 2>/dev/null) $(BIN_LIBRNS)
+$(OUT): cmd/ren-tui/main.odin $(shell find ren -name '*.odin' 2>/dev/null) $(BIN_LIBRNS)
 	mkdir -p bin
 	LIBRARY_PATH="$(VENDOR_LIB):$${LIBRARY_PATH:-}" \
-	$(ODIN) build cmd/ren-tui -out:$(OUT) $(COLLECTION) $(LINKER_FLAGS)
+	$(ODIN) build cmd/ren-tui -out:$(OUT) $(COLLECTION) $(LINKER_FLAGS) $(VERSION_DEFINES)
 
-$(LISTEN): git-commit cmd/ren-listen/main.odin $(shell find ren -name '*.odin' 2>/dev/null) $(BIN_LIBRNS)
+$(LISTEN): cmd/ren-listen/main.odin $(shell find ren -name '*.odin' 2>/dev/null) $(BIN_LIBRNS)
 	mkdir -p bin
 	LIBRARY_PATH="$(VENDOR_LIB):$${LIBRARY_PATH:-}" \
-	$(ODIN) build cmd/ren-listen -out:$(LISTEN) $(COLLECTION) $(LINKER_FLAGS)
+	$(ODIN) build cmd/ren-listen -out:$(LISTEN) $(COLLECTION) $(LINKER_FLAGS) $(VERSION_DEFINES)
 
 man:
 	@ls -1 man/*.1
@@ -157,43 +153,43 @@ test: test-smoke test-unit test-property test-fuzz test-acceptance \
 	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop \
 	test-oracle test-blackbox
 
-test-smoke: git-commit $(BIN_LIBRNS)
+test-smoke: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/smoke $(ODIN_TEST_SERIAL_FLAGS)
 
-test-unit: git-commit $(BIN_LIBRNS)
+test-unit: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/unit $(ODIN_TEST_SERIAL_FLAGS)
 
-test-property: git-commit $(BIN_LIBRNS)
+test-property: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/property $(ODIN_TEST_FLAGS)
 
-test-fuzz: git-commit $(BIN_LIBRNS)
+test-fuzz: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/fuzz $(ODIN_TEST_FLAGS)
 
-test-acceptance: git-commit $(BIN_LIBRNS)
+test-acceptance: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/acceptance $(ODIN_TEST_FLAGS)
 
-test-e2e: git-commit $(BIN_LIBRNS)
+test-e2e: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/e2e $(ODIN_TEST_SERIAL_FLAGS)
 
-test-cross-terminal: git-commit $(BIN_LIBRNS)
+test-cross-terminal: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/cross_terminal $(ODIN_TEST_SERIAL_FLAGS)
 
-test-mutation: git-commit $(BIN_LIBRNS)
+test-mutation: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/mutation $(ODIN_TEST_FLAGS)
 
-test-race: git-commit $(BIN_LIBRNS)
+test-race: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/race $(ODIN_TEST_FLAGS)
 
-test-chaos: git-commit $(BIN_LIBRNS)
+test-chaos: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/chaos $(ODIN_TEST_SERIAL_FLAGS)
 
-test-oracle: git-commit $(BIN_LIBRNS)
+test-oracle: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/oracle $(ODIN_TEST_FLAGS)
 
-test-blackbox: git-commit $(BIN_LIBRNS)
+test-blackbox: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/blackbox $(ODIN_TEST_FLAGS)
 
-bench: git-commit $(BIN_LIBRNS)
+bench: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/bench $(ODIN_TEST_SERIAL_FLAGS)
 
 package:

@@ -28,6 +28,127 @@ directory_load_spill_meta :: proc(d: ^Directory) {
 	d.spill_count = peers_spill_count(d.spill_path)
 }
 
+// Hydrate directory from peers.msgpack (hottest first, capped at PEERS_HOT_MAX).
+directory_load_all :: proc(d: ^Directory, cfg: ^Config) {
+	if d.spill_path == "" {
+		directory_bind_spill(d, cfg)
+	}
+	all := peers_spill_load_all(d.spill_path)
+	if len(all) == 0 {
+		directory_seed_propagation(d, cfg)
+		d.spill_count = 0
+		return
+	}
+	sort_peers_by_heard_desc(all[:])
+	hot_n := min(len(all), constants.PEERS_HOT_MAX)
+	for i in 0 ..< hot_n {
+		p := all[i]
+		append(&d.peers, Peer{
+			hash = p.hash,
+			identity_hash = p.identity_hash,
+			display_name = strings.clone(p.display_name),
+			stamp_cost = p.stamp_cost,
+			hops = p.hops,
+			hops_known = p.hops_known,
+			last_heard = p.last_heard,
+			kind = p.kind,
+		})
+	}
+	if len(all) > hot_n {
+		_ = peers_spill_save_all(d.spill_path, all[hot_n:])
+		d.spill_count = len(all) - hot_n
+	} else {
+		d.spill_count = 0
+	}
+	peers_destroy(all)
+	directory_seed_propagation(d, cfg)
+	d.revision += 1
+}
+
+// Persist hot peers merged with spill cold set so Network survives reboot.
+directory_save_all :: proc(d: ^Directory) -> bool {
+	if d.spill_path == "" {
+		return false
+	}
+	cold := peers_spill_load_all(d.spill_path)
+	defer peers_destroy(cold)
+	merged := make([dynamic]Peer, 0, len(d.peers) + len(cold))
+	defer peers_destroy(merged)
+	for p in d.peers {
+		append(&merged, Peer{
+			hash = p.hash,
+			identity_hash = p.identity_hash,
+			display_name = strings.clone(p.display_name),
+			stamp_cost = p.stamp_cost,
+			hops = p.hops,
+			hops_known = p.hops_known,
+			last_heard = p.last_heard,
+			kind = p.kind,
+		})
+	}
+	for p in cold {
+		found := false
+		for m in merged {
+			if m.hash == p.hash {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		append(&merged, Peer{
+			hash = p.hash,
+			identity_hash = p.identity_hash,
+			display_name = strings.clone(p.display_name),
+			stamp_cost = p.stamp_cost,
+			hops = p.hops,
+			hops_known = p.hops_known,
+			last_heard = p.last_heard,
+			kind = p.kind,
+		})
+	}
+	for len(merged) > constants.PEERS_SPILL_MAX {
+		ci := 0
+		for i in 1 ..< len(merged) {
+			if merged[i].last_heard < merged[ci].last_heard {
+				ci = i
+			}
+		}
+		delete(merged[ci].display_name)
+		ordered_remove(&merged, ci)
+	}
+	ok := peers_spill_save_all(d.spill_path, merged[:])
+	if ok {
+		d.spill_count = max(0, len(merged) - len(d.peers))
+	}
+	return ok
+}
+
+directory_seed_propagation :: proc(d: ^Directory, cfg: ^Config) {
+	if cfg == nil || !cfg.has_propagation_node {
+		return
+	}
+	for p in d.peers {
+		if p.hash == cfg.propagation_node {
+			return
+		}
+	}
+	directory_upsert(d, cfg.propagation_node, cfg.propagation_node, .Propagation, "propagation", nil, 0)
+}
+
+@(private)
+sort_peers_by_heard_desc :: proc(peers: []Peer) {
+	n := len(peers)
+	for i in 0 ..< n {
+		for j in i + 1 ..< n {
+			if peers[j].last_heard > peers[i].last_heard {
+				peers[i], peers[j] = peers[j], peers[i]
+			}
+		}
+	}
+}
+
 peers_spill_count :: proc(path: string) -> int {
 	if path == "" || !os.exists(path) {
 		return 0
