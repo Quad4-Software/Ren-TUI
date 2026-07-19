@@ -31,26 +31,49 @@ Config is plaintext at `~/.config/ren-tui/config` (NomadNet-style INI). Conversa
 
 ### TUI renderer
 
-Immediate-mode drawing into a retained cell buffer, then a full-frame present.
+Immediate-mode drawing into a retained cell buffer, then a dirty-cell present when possible.
 
 ```
 each tick:
   resize buffer if needed
-  clear cells
-  draw(app) -> widgets write into Buffer
-  term_present -> emit ANSI for every cell
+  if dirty:
+    clear cells
+    draw(app) -> widgets write into Buffer
+    term_present -> ANSI for changed cells (full frame on first or resize)
   poll input (short timeout)
+  session_poll -> advance page/send jobs and drain typed events
 ```
 
 | Piece | Role |
 |-------|------|
-| `ren/ui/loop.odin` | Frame loop: clear -> draw -> present -> poll |
+| `ren/ui/loop.odin` | Frame loop owns theme and caps, clear -> draw -> present -> poll |
 | `ren/ui/buffer.odin` | Flat `[]Cell` (rune + RGB + style) |
 | `ren/ui/widgets.odin` | Stateless list / input / box / tabs painters |
-| `ren/ui/term.odin` | Raw mode, alt screen, SGR walk of the buffer |
-| `ren/app/` | Tab layouts call widgets each frame |
+| `ren/ui/term.odin` | Raw mode, alt screen, dirty-cell SGR present via `Term.prev` |
+| `ren/app/` | Tab layouts, theme apply, micron paint into Buffer |
 
-There is no widget tree and no retained scene graph. App state lives in `App`, the screen is rebuilt from that state every frame (classic immediate-mode UI). The buffer is only retained between draw and present within a tick. `Term.prev` exists but is not used for dirty-cell diff yet, so presents are full redraws.
+There is no widget tree and no retained scene graph. App state lives in `App`, the screen is rebuilt from that state when dirty. Theme and terminal caps hang on `ui.Loop` (activated for draw/present). Standalone tests can use a fallback when no loop is active.
+
+### Packages and boundaries
+
+| Package | Role |
+|---------|------|
+| `ren/app` | Shell: tabs, input, draw, theme apply, micron paint |
+| `ren/ui` | Terminal I/O, buffer, widgets, loop context |
+| `ren/net` | librns session, typed events, page job, async send job |
+| `ren/store` | Config INI, peers, conversations (no UI types) |
+| `ren/micron` | Parse/resolve micron to RGB IR (no Buffer dependency) |
+| `ren/lxmf` | Msgpack, LXMF pack/sign, identity, hex helpers |
+
+`store` and `micron` do not import `ren:ui`. Theme overrides are store strings applied through `app.config_apply_theme`. Micron pages are painted by `app.paint_doc`.
+
+### Session events and async send
+
+Network work advances on the UI poll tick. Page fetch was already a non-blocking job. Direct LXMF send uses the same pattern (`session_send_begin` / `Send_Job`) so compose does not block the frame loop waiting on a link.
+
+`net.Session` keeps a small typed event ring (`Message_Received`, `Send_Ok`, `Send_Failed`, `Page_Ok`, …). The UI drains events instead of comparing status strings for control flow. `session.status` remains a short human line for the status bar.
+
+Send is rejected with `page busy` while a page job holds the link path (no dual-link send yet). Opportunistic and propagation *send* are still not implemented.
 
 ### LXMF and msgpack
 
@@ -61,6 +84,7 @@ Ren does **not** use a third-party msgpack library or Python LXMF bindings at ru
 | `msgpack.odin` | Encoder/decoder subset (nil/bool/int/uint/float/bin/str/array/map) |
 | `message.odin` | LXMF pack/unpack, Ed25519 sign/verify |
 | `identity.odin` | 64-byte identity material, hashes, sign |
+| `hex.odin` | Shared hex32 decode for addresses and micron links |
 | `stamp.odin` | Workfactor / ticket stamps |
 | `announce.odin` | Announce app-data parse |
 | `router.odin` | Compose + inbound stamp checks |
@@ -97,7 +121,7 @@ Schema version `CONVERSATIONS_SCHEMA_VERSION` (currently 1) is the first array e
 
 Supported msgpack subset for wire and storage: nil, bool, int, uint, float, bin, str, array, map, with explicit depth and size caps in `ren/lxmf/msgpack.odin`.
 
-Interop with Python RNS/LXMF is checked in `tests/interop/` (optional if those packages are installed). Covers opportunistic and direct packed shapes, stamp presence, and an announce app-data fixture.
+Interop with Python RNS/LXMF is checked in `tests/interop/` (optional if those packages are installed). Covers opportunistic and direct packed shapes, stamp presence, and an announce app-data fixture. Skips cleanly if the Python mesh stack cannot start.
 
 ### Theme and colors
 
@@ -108,7 +132,7 @@ Presets under `[ui] theme = ...`:
 - `amber`
 - `mono`
 
-Cycle Theme in the Config tab, or set it in the config file. Optional `[theme]` section overrides any slot with `#RRGGBB` hex:
+Cycle Theme in the Config tab, or set it in the config file. Optional `[theme]` section overrides any slot with `#RRGGBB` hex (stored as `store.Theme_Overrides`, applied onto the active `ui.Loop`):
 
 ```
 [ui]
@@ -245,10 +269,10 @@ tests/cross_terminal/   full/256/compat/dumb capability matrix
 tests/mutation/         corrupted messages and codec edges
 tests/race/             concurrent pack/unpack
 tests/chaos/            randomized op sequences
-tests/interop/          Python LXMF opportunistic roundtrip
+tests/interop/          Python LXMF shapes (skips if stack missing)
 ```
 
-Suites that touch process-global caps/theme run single-threaded.
+Some UI suites still pin `ODIN_TEST_THREADS=1` for terminal/caps isolation. Theme state is Loop-scoped, so race theme tests can run parallel.
 
 ## Keys
 

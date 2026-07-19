@@ -188,3 +188,31 @@ test_micron_color_to_rgb_hex :: proc(t: ^testing.T) {
 	def := micron.color_to_rgb("default", fb)
 	testing.expect_value(t, def.r, u8(1))
 }
+
+@(test)
+test_micron_layout_wraps_words :: proc(t: ^testing.T) {
+	doc := micron.parse("hello world this is a long line of micron text")
+	defer micron.doc_destroy(&doc)
+	rows := micron.layout_doc(doc, 12, context.allocator)
+	defer micron.layout_rows_destroy(&rows)
+	testing.expect(t, len(rows) >= 3)
+	total := 0
+	for row in rows {
+		w := micron.layout_row_width(row) - row.indent
+		testing.expect(t, w <= 12)
+		total += w
+	}
+	testing.expect(t, total >= 20)
+}
+
+@(test)
+test_micron_layout_hard_breaks_long_token :: proc(t: ^testing.T) {
+	doc := micron.parse("abcdefghijklmnopqrstuvwxyz")
+	defer micron.doc_destroy(&doc)
+	rows := micron.layout_doc(doc, 8, context.allocator)
+	defer micron.layout_rows_destroy(&rows)
+	testing.expect(t, len(rows) >= 3)
+	for row in rows {
+		testing.expect(t, micron.layout_row_width(row) <= 8)
+	}
+}

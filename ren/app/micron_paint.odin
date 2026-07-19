@@ -2,7 +2,7 @@
 // Copyright (c) 2026 Quad4
 
 /*
-Paint micron documents into the TUI cell buffer.
+Paint micron documents into the TUI cell buffer with word wrap.
 */
 
 package app
@@ -61,19 +61,19 @@ paint_doc :: proc(
 		page_fg = t.fg
 	}
 
-	link_i := micron.link_index_before_line(doc, scroll)
+	rows := micron.layout_doc(doc, r.w, context.temp_allocator)
 	for row in 0 ..< r.h {
 		y := r.y + row
 		idx := scroll + row
 		ui.buffer_fill_rect(buf, r.x, y, r.w, 1, ' ', page_fg, page_bg)
-		if idx < 0 || idx >= len(doc.lines) {
+		if idx < 0 || idx >= len(rows) {
 			continue
 		}
-		line := doc.lines[idx]
-		indent := min(line.depth, 8) * 2
-		content_w := micron.line_plain_width(line)
+		layout_row := rows[idx]
+		src := doc.lines[layout_row.src_line] if layout_row.src_line >= 0 && layout_row.src_line < len(doc.lines) else micron.Line{}
+		content_w := micron.layout_row_width(layout_row)
 		x := r.x
-		switch line.align {
+		switch src.align {
 		case .Left:
 			x = r.x
 		case .Center:
@@ -81,41 +81,37 @@ paint_doc :: proc(
 		case .Right:
 			x = r.x + max(0, r.w - content_w)
 		}
-		x += indent
-		for span in line.spans {
-			fg, bg, us := style_to_ui(span.style, page_fg, page_bg)
-			text := span.text
-			is_link := span.kind == .Link || span.kind == .Partial
+		x += layout_row.indent
+		for seg in layout_row.segs {
+			fg, bg, us := style_to_ui(seg.style, page_fg, page_bg)
+			is_link := seg.kind == .Link || seg.kind == .Partial
 			if is_link {
 				us += {.Underline}
-				if focus_link == link_i {
+				if focus_link >= 0 && seg.link_i == focus_link {
 					us += {.Reverse}
 					fg = t.highlight_fg
 				} else {
 					fg = t.title
 				}
 			}
-			if span.kind == .HR {
+			if seg.kind == .HR {
 				fg = t.muted
 			}
 			start_x := x
-			for ch in text {
+			for ch in seg.text {
 				if x >= r.x + r.w {
 					break
 				}
 				ui.buffer_put(buf, x, y, ch, fg, bg, us)
 				x += 1
 			}
-			if is_link {
-				if hits != nil && span.url != "" {
-					append(hits, micron.Link_Hit{
-						line_idx = idx,
-						x0 = start_x,
-						x1 = x,
-						url = span.url,
-					})
-				}
-				link_i += 1
+			if is_link && hits != nil && seg.url != "" && x > start_x {
+				append(hits, micron.Link_Hit{
+					line_idx = idx,
+					x0 = start_x,
+					x1 = x,
+					url = seg.url,
+				})
 			}
 			if x >= r.x + r.w {
 				break

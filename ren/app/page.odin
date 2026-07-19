@@ -272,7 +272,8 @@ page_line_count :: proc(a: ^App) -> int {
 		}
 		return min(n, constants.PAGE_MAX_LINES + 1)
 	}
-	return len(a.page_doc.lines)
+	w := max(1, a.detail_rect.w)
+	return micron.layout_row_count(a.page_doc, w)
 }
 
 page_activate_url :: proc(a: ^App, url: string) {
@@ -335,23 +336,13 @@ ensure_page_link_visible :: proc(a: ^App) {
 	if a.page_link_focus < 0 {
 		return
 	}
-	n := 0
-	for line_i in 0 ..< len(a.page_doc.lines) {
-		for span in a.page_doc.lines[line_i].spans {
-			if span.kind != .Link && span.kind != .Partial {
-				continue
-			}
-			if n == a.page_link_focus {
-				visible := max(1, a.detail_rect.h - 1)
-				if line_i < a.page_scroll {
-					a.page_scroll = line_i
-				} else if line_i >= a.page_scroll + visible {
-					a.page_scroll = max(0, line_i - visible + 1)
-				}
-				return
-			}
-			n += 1
-		}
+	w := max(1, a.detail_rect.w)
+	row_i := micron.layout_first_row_for_link(a.page_doc, w, a.page_link_focus)
+	visible := max(1, a.detail_rect.h - 1)
+	if row_i < a.page_scroll {
+		a.page_scroll = row_i
+	} else if row_i >= a.page_scroll + visible {
+		a.page_scroll = max(0, row_i - visible + 1)
 	}
 }
 

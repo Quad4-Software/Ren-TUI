@@ -104,6 +104,14 @@ test_e2e_draw_widgets_into_buffer :: proc(t: ^testing.T) {
 	heading := ui.buffer_at(&buf, 4, 2)
 	testing.expect(t, heading != nil)
 	testing.expect_value(t, heading.ch, 'P')
+
+	long := micron.parse("alpha bravo charlie delta echo foxtrot")
+	defer micron.doc_destroy(&long)
+	app.paint_doc(&buf, ui.Rect{0, 10, 12, 4}, long, 0, -1, nil)
+	row0 := ui.buffer_at(&buf, 0, 10)
+	row1 := ui.buffer_at(&buf, 0, 11)
+	testing.expect(t, row0 != nil && row0.ch != 0)
+	testing.expect(t, row1 != nil && row1.ch != 0)
 }
 
 @(test)
