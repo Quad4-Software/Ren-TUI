@@ -7,10 +7,13 @@ Unit tests for typed session event ring.
 
 package tests
 
+import "core:strings"
 import "core:testing"
 
 import "ren:app"
 import "ren:net"
+import "ren:store"
+import "ren:ui"
 
 @(test)
 test_session_event_default_detail :: proc(t: ^testing.T) {
@@ -64,10 +67,34 @@ test_session_event_ring_drop_oldest :: proc(t: ^testing.T) {
 @(test)
 test_handle_session_events_message_received :: proc(t: ^testing.T) {
 	a: app.App
+	ui.list_init(&a.conv_list)
+	defer ui.list_destroy(&a.conv_list)
+	store.directory_init(&a.directory)
+	defer store.directory_destroy(&a.directory)
+	store.conversations_init(&a.conversations)
+	defer store.conversations_destroy(&a.conversations)
+
+	peer: [store.HASH_LEN]u8
+	peer[0] = 0x11
+	store.conversations_add_message(
+		&a.conversations,
+		peer,
+		store.Stored_Message{
+			direction = .In,
+			title = strings.clone(""),
+			content = strings.clone("hi"),
+			timestamp = 1,
+			method = .Opportunistic,
+		},
+		"Peer",
+	)
+	testing.expect_value(t, len(a.conv_list.items), 0)
+
 	net.session_event_push(&a.session, .Message_Received)
 	app.handle_session_events(&a)
 	testing.expect_value(t, a.recv_count, 1)
 	testing.expect(t, a.ui_dirty)
+	testing.expect_value(t, len(a.conv_list.items), 1)
 	net.session_event_ring_clear(&a.session.events)
 	delete(a.session.status)
 }

@@ -78,6 +78,9 @@ buffer_put :: proc(b: ^Buffer, x, y: int, ch: rune, fg, bg: Color, style: Style 
 
 // Strip controls before they reach the present path.
 sanitize_cell_rune :: proc(ch: rune) -> rune {
+	if ch == CELL_WIDE_CONT {
+		return ch
+	}
 	if ch < 0x20 || ch == 0x7f || (ch >= 0x80 && ch <= 0x9f) {
 		return ' '
 	}
@@ -90,11 +93,57 @@ buffer_text :: proc(b: ^Buffer, x, y: int, text: string, fg, bg: Color, style: S
 		if r == '\n' {
 			break
 		}
-		buffer_put(b, cx, y, r, fg, bg, style)
-		cx += 1
-		if cx >= b.width {
+		w := rune_cols(r)
+		ch := r
+		if w <= 0 {
+			// Combining marks take no columns. Controls occupy one sanitized space.
+			if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+				ch = ' '
+				w = 1
+			} else {
+				continue
+			}
+		}
+		if cx + w > b.width {
 			break
 		}
+		buffer_put(b, cx, y, ch, fg, bg, style)
+		for i in 1 ..< w {
+			buffer_put(b, cx + i, y, CELL_WIDE_CONT, fg, bg, style)
+		}
+		cx += w
+	}
+}
+
+// Like buffer_text but never writes past x_max (exclusive).
+buffer_text_clip :: proc(b: ^Buffer, x, y, x_max: int, text: string, fg, bg: Color, style: Style = {}) {
+	if x_max <= x {
+		return
+	}
+	limit := min(b.width, x_max)
+	cx := x
+	for r in text {
+		if r == '\n' {
+			break
+		}
+		w := rune_cols(r)
+		ch := r
+		if w <= 0 {
+			if r < 0x20 || r == 0x7f || (r >= 0x80 && r <= 0x9f) {
+				ch = ' '
+				w = 1
+			} else {
+				continue
+			}
+		}
+		if cx + w > limit {
+			break
+		}
+		buffer_put(b, cx, y, ch, fg, bg, style)
+		for i in 1 ..< w {
+			buffer_put(b, cx + i, y, CELL_WIDE_CONT, fg, bg, style)
+		}
+		cx += w
 	}
 }
 

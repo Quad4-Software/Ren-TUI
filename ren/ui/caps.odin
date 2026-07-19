@@ -229,6 +229,9 @@ color_to_ansi16 :: proc(c: Color) -> int {
 }
 
 sanitize_rune :: proc(ch: rune) -> rune {
+	if ch == CELL_WIDE_CONT {
+		return ch
+	}
 	if ch < 0x20 || ch == 0x7f || (ch >= 0x80 && ch <= 0x9f) {
 		return ' '
 	}

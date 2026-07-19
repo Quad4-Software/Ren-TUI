@@ -7,6 +7,7 @@ Announce and LXMF ingest into store plus session events.
 
 package net
 
+import "core:fmt"
 import "core:strings"
 
 import rns "rns:rns"
@@ -81,15 +82,22 @@ session_handle_event :: proc(
 	case .Link_Data:
 		session_ingest_lxmf(s, rns.event_app_data(ev), .Direct, directory, conversations, cfg)
 	case .Destination_Data:
-		// Opportunistic LXMF: plaintext is packed[DEST_LEN:] so prepend our delivery hash
+		// Opportunistic LXMF. Ignore non-delivery destinations (e.g. nomad node).
+		dest := rns.event_destination_hash(ev)
+		if len(dest) == store.HASH_LEN &&
+		   !lxmf.destination_hash_matches(s.router.delivery_hash, dest) {
+			return
+		}
 		plain := rns.event_app_data(ev)
 		if len(plain) == 0 {
 			return
 		}
-		full := make([]u8, store.HASH_LEN + len(plain), context.temp_allocator)
-		copy(full[0:store.HASH_LEN], s.router.delivery_hash[:])
-		copy(full[store.HASH_LEN:], plain)
-		session_ingest_lxmf(s, full, .Opportunistic, directory, conversations, cfg)
+		msg, ok := lxmf.message_unpack_opportunistic(s.router.delivery_hash, plain)
+		if !ok {
+			session_event_push(s, .Error, "lxmf unpack failed")
+			return
+		}
+		session_store_inbound(s, &msg, directory, conversations, cfg)
 	case .Resource_Concluded:
 		session_ingest_lxmf(s, rns.event_app_data(ev), .Direct, directory, conversations, cfg)
 	case .Link_Established, .Link_Failed, .Link_Closed,
@@ -115,8 +123,19 @@ session_ingest_lxmf :: proc(
 		session_event_push(s, .Error, "lxmf unpack failed")
 		return
 	}
-	defer lxmf.message_destroy(&msg)
-	if !lxmf.router_validate_inbound_stamp(&s.router, &msg) {
+	session_store_inbound(s, &msg, directory, conversations, cfg)
+}
+
+@(private)
+session_store_inbound :: proc(
+	s: ^Session,
+	msg: ^lxmf.Message,
+	directory: ^store.Directory,
+	conversations: ^store.Conversations,
+	cfg: ^store.Config = nil,
+) {
+	defer lxmf.message_destroy(msg)
+	if !lxmf.router_validate_inbound_stamp(&s.router, msg) {
 		session_event_push(s, .Error, "stamp rejected")
 		return
 	}
@@ -138,6 +157,7 @@ session_ingest_lxmf :: proc(
 	} else {
 		store.conversations_add_message(conversations, msg.source_hash, stored, label)
 	}
-	session_event_push(s, .Message_Received)
+	src := store.hash_hex(msg.source_hash, context.temp_allocator)
+	detail := fmt.tprintf("from %s", src)
+	session_event_push(s, .Message_Received, detail)
 }
-

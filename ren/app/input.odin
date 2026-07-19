@@ -446,6 +446,7 @@ handle_session_events :: proc(a: ^App) {
 		case .Message_Received:
 			set_status(a, ev.detail if ev.detail != "" else "message received", STATUS_HOLD)
 			a.recv_count += 1
+			refresh_conv_list(a)
 			mark_dirty(a)
 		case .Send_Ok:
 			set_status(a, ev.detail if ev.detail != "" else "sent", STATUS_HOLD)

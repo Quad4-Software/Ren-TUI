@@ -3,11 +3,14 @@
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 import tempfile
 import textwrap
 from pathlib import Path
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 try:
     import RNS  # noqa: F401
@@ -35,10 +38,14 @@ def check_announce_appdata() -> None:
 PACK_CHECKS = textwrap.dedent(
     r"""
     import sys
-    import tempfile
     from pathlib import Path
+    import tempfile
     import RNS
     import LXMF
+
+    fixtures = Path(sys.argv[1])
+    write_fixtures = sys.argv[2] == "1"
+    fixtures.mkdir(parents=True, exist_ok=True)
 
     storage = Path(tempfile.mkdtemp(prefix="ren-lxmf-"))
     identity_path = storage / "identity"
@@ -58,8 +65,8 @@ PACK_CHECKS = textwrap.dedent(
     msg = LXMF.LXMessage(
         destination=dest,
         source=dest,
-        content="interop-ping",
-        title="",
+        content="ping-body",
+        title="t",
         desired_method=LXMF.LXMessage.OPPORTUNISTIC,
     )
     msg.pack()
@@ -74,8 +81,14 @@ PACK_CHECKS = textwrap.dedent(
     content = out.content
     if isinstance(content, bytes):
         content = content.decode("utf-8", errors="replace")
-    assert str(content) == "interop-ping"
+    assert str(content) == "ping-body"
     assert bytes(out.source_hash) == delivery_hash
+
+    if write_fixtures:
+        (fixtures / "py_delivery.hex").write_text(delivery_hash.hex() + "\n")
+        (fixtures / "py_opp_full.hex").write_text(packed.hex() + "\n")
+        (fixtures / "py_opp_wire.hex").write_text(wire.hex() + "\n")
+
     print("ok python lxmf opportunistic roundtrip")
     print("delivery_hash", delivery_hash.hex())
     print("packed_len", len(packed))
@@ -102,6 +115,8 @@ PACK_CHECKS = textwrap.dedent(
     if isinstance(content, bytes):
         content = content.decode("utf-8", errors="replace")
     assert str(content) == "direct-ping"
+    if write_fixtures:
+        (fixtures / "py_direct_full.hex").write_text(packed.hex() + "\n")
     print("ok python lxmf direct packed shape")
     print("direct_packed_len", len(packed))
 
@@ -123,10 +138,54 @@ PACK_CHECKS = textwrap.dedent(
 )
 
 
+def verify_committed_fixtures() -> None:
+    required = (
+        "py_delivery.hex",
+        "py_opp_full.hex",
+        "py_opp_wire.hex",
+        "py_direct_full.hex",
+    )
+    for name in required:
+        path = FIXTURES / name
+        if not path.is_file() or path.stat().st_size == 0:
+            raise AssertionError(f"missing fixture {path}")
+
+    import LXMF
+
+    delivery = bytes.fromhex((FIXTURES / "py_delivery.hex").read_text().strip())
+    full = bytes.fromhex((FIXTURES / "py_opp_full.hex").read_text().strip())
+    wire = bytes.fromhex((FIXTURES / "py_opp_wire.hex").read_text().strip())
+    direct = bytes.fromhex((FIXTURES / "py_direct_full.hex").read_text().strip())
+
+    assert full[:16] == delivery
+    assert wire == full[16:]
+    assert delivery + wire == full
+
+    out = LXMF.LXMessage.unpack_from_bytes(full)
+    assert out is not None
+    content = out.content
+    if isinstance(content, bytes):
+        content = content.decode("utf-8", errors="replace")
+    assert str(content) == "ping-body"
+
+    rebuilt = delivery + wire
+    out2 = LXMF.LXMessage.unpack_from_bytes(rebuilt)
+    assert out2 is not None
+
+    dout = LXMF.LXMessage.unpack_from_bytes(direct)
+    assert dout is not None
+    dcontent = dout.content
+    if isinstance(dcontent, bytes):
+        dcontent = dcontent.decode("utf-8", errors="replace")
+    assert str(dcontent) == "direct-ping"
+    print("ok committed python fixtures unpack in LXMF")
+
+
 def main() -> int:
     check_announce_appdata()
+    write = "1" if os.environ.get("REN_WRITE_FIXTURES") == "1" else "0"
     proc = subprocess.run(
-        [sys.executable, "-c", PACK_CHECKS],
+        [sys.executable, "-c", PACK_CHECKS, str(FIXTURES), write],
         capture_output=True,
         text=True,
     )
@@ -137,6 +196,12 @@ def main() -> int:
             print(err.splitlines()[-1])
         return 0
     sys.stdout.write(proc.stdout)
+    try:
+        verify_committed_fixtures()
+    except Exception as e:
+        print("fail: committed fixture check:", e)
+        return 1
+    print("ok python->odin fixture files ready")
     return 0
 
 

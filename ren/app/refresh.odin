@@ -119,6 +119,18 @@ net_view_kind :: proc(v: Net_View) -> store.Peer_Kind {
 }
 
 refresh_network_list :: proc(a: ^App, prev_sel, prev_scroll: int) {
+	keep_hash: [store.HASH_LEN]u8
+	have_keep := false
+	visual_row := 0
+	if prev_sel >= 0 && prev_sel < len(a.net_peer_idx) {
+		pi := a.net_peer_idx[prev_sel]
+		if pi >= 0 && pi < len(a.directory.peers) {
+			keep_hash = a.directory.peers[pi].hash
+			have_keep = true
+			visual_row = prev_sel - prev_scroll
+		}
+	}
+
 	ui.list_clear(&a.net_list)
 	clear(&a.net_peer_idx)
 
@@ -186,20 +198,61 @@ refresh_network_list :: proc(a: ^App, prev_sel, prev_scroll: int) {
 		ui.list_push(&a.net_list, fmt.tprintf("  ... +%d more (narrow/filter or scroll cap)", hidden))
 		append(&a.net_peer_idx, -1)
 	}
-	if len(a.net_list.items) > 0 {
-		a.net_list.selected = clamp(prev_sel, 0, len(a.net_list.items) - 1)
-		a.net_list.scroll = clamp(prev_scroll, 0, max(0, len(a.net_list.items) - 1))
-		ui.list_ensure_visible(&a.net_list, list_h)
-		if a.net_list.selected < len(a.net_peer_idx) && a.net_peer_idx[a.net_list.selected] < 0 {
-			for i in a.net_list.selected + 1 ..< len(a.net_peer_idx) {
-				if a.net_peer_idx[i] >= 0 {
-					a.net_list.selected = i
-					ui.list_ensure_visible(&a.net_list, list_h)
-					break
-				}
+	if len(a.net_list.items) == 0 {
+		return
+	}
+	if have_keep {
+		if restore_network_selection(a, keep_hash, visual_row, list_h) {
+			return
+		}
+	}
+	a.net_list.selected = clamp(prev_sel, 0, len(a.net_list.items) - 1)
+	a.net_list.scroll = clamp(prev_scroll, 0, max(0, len(a.net_list.items) - 1))
+	ui.list_ensure_visible(&a.net_list, list_h)
+	if a.net_list.selected < len(a.net_peer_idx) && a.net_peer_idx[a.net_list.selected] < 0 {
+		for i in a.net_list.selected + 1 ..< len(a.net_peer_idx) {
+			if a.net_peer_idx[i] >= 0 {
+				a.net_list.selected = i
+				ui.list_ensure_visible(&a.net_list, list_h)
+				break
 			}
 		}
 	}
+}
+
+// Keep the same peer selected across announce-driven reorders. visual_row is
+// selected_index - scroll before the rebuild.
+restore_network_selection :: proc(
+	a: ^App,
+	keep_hash: [store.HASH_LEN]u8,
+	visual_row: int,
+	list_h: int,
+) -> bool {
+	found := -1
+	for idx, i in a.net_peer_idx {
+		if idx < 0 || idx >= len(a.directory.peers) {
+			continue
+		}
+		if a.directory.peers[idx].hash == keep_hash {
+			found = i
+			break
+		}
+	}
+	if found < 0 {
+		return false
+	}
+	a.net_list.selected = found
+	vr := visual_row
+	if vr < 0 {
+		vr = 0
+	}
+	a.net_list.scroll = max(0, found - vr)
+	max_scroll := max(0, len(a.net_list.items) - list_h)
+	if a.net_list.scroll > max_scroll {
+		a.net_list.scroll = max_scroll
+	}
+	ui.list_ensure_visible(&a.net_list, list_h)
+	return true
 }
 
 sort_peer_idxs_by_heard :: proc(d: ^store.Directory, idxs: []int) {

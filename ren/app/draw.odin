@@ -288,9 +288,9 @@ draw_page_loading :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
 	panel_w := min(body.w - 2, 56)
 	panel_h := min(body.h - 2, 11)
 	if panel_w < 24 || panel_h < 7 {
-		ui.buffer_text(buf, body.x + 1, body.y, truncate(fmt.tprintf("%s Loading %s", spin, path), body.w - 2), t.title, t.bg)
-		ui.buffer_text(buf, body.x + 1, body.y + 1, truncate(status, body.w - 2), t.highlight_fg, t.bg)
-		ui.buffer_text(buf, body.x + 1, body.y + 2, "Esc cancel", t.muted, t.bg)
+		ui.buffer_text_clip(buf, body.x + 1, body.y, body.x + body.w - 1, ui.truncate_runes(fmt.tprintf("%s Loading %s", spin, path), max(0, body.w - 2)), t.title, t.bg)
+		ui.buffer_text_clip(buf, body.x + 1, body.y + 1, body.x + body.w - 1, ui.truncate_runes(status, max(0, body.w - 2)), t.highlight_fg, t.bg)
+		ui.buffer_text_clip(buf, body.x + 1, body.y + 2, body.x + body.w - 1, "Esc cancel", t.muted, t.bg)
 		return
 	}
 	px := body.x + max(0, (body.w - panel_w) / 2)
@@ -298,14 +298,17 @@ draw_page_loading :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
 	panel := ui.Rect{px, py, panel_w, panel_h}
 	ui.draw_box(buf, panel, "loading", true)
 	inner := ui.rect_inset(panel, 1)
-	ui.buffer_text(buf, inner.x + 1, inner.y, truncate(fmt.tprintf("%s  Fetching NomadNet page", spin), inner.w - 2), t.title, t.bg)
-	ui.buffer_text(buf, inner.x + 1, inner.y + 2, truncate(name, inner.w - 2), t.fg, t.bg)
-	ui.buffer_text(buf, inner.x + 1, inner.y + 3, truncate(fmt.tprintf("hash  %s", hex), inner.w - 2), t.muted, t.bg)
-	ui.buffer_text(buf, inner.x + 1, inner.y + 4, truncate(fmt.tprintf("path  %s", path), inner.w - 2), t.fg, t.bg)
-	ui.buffer_text(buf, inner.x + 1, inner.y + 5, truncate(fmt.tprintf("via   %s  %s", phase, hops_line), inner.w - 2), t.highlight_fg, t.bg)
-	ui.buffer_text(buf, inner.x + 1, inner.y + 7, truncate(status, inner.w - 2), t.muted, t.bg)
+	text_x := inner.x + 1
+	text_max := inner.x + inner.w - 1
+	cols := max(0, inner.w - 2)
+	ui.buffer_text_clip(buf, text_x, inner.y, text_max, ui.truncate_runes(fmt.tprintf("%s  Fetching NomadNet page", spin), cols), t.title, t.bg)
+	ui.buffer_text_clip(buf, text_x, inner.y + 2, text_max, ui.truncate_runes(name, cols), t.fg, t.bg)
+	ui.buffer_text_clip(buf, text_x, inner.y + 3, text_max, ui.truncate_runes(fmt.tprintf("hash  %s", hex), cols), t.muted, t.bg)
+	ui.buffer_text_clip(buf, text_x, inner.y + 4, text_max, ui.truncate_runes(fmt.tprintf("path  %s", path), cols), t.fg, t.bg)
+	ui.buffer_text_clip(buf, text_x, inner.y + 5, text_max, ui.truncate_runes(fmt.tprintf("via   %s  %s", phase, hops_line), cols), t.highlight_fg, t.bg)
+	ui.buffer_text_clip(buf, text_x, inner.y + 7, text_max, ui.truncate_runes(status, cols), t.muted, t.bg)
 	if inner.h > 8 {
-		ui.buffer_text(buf, inner.x + 1, inner.y + inner.h - 1, "Esc cancel   open another node to switch", t.muted, t.bg)
+		ui.buffer_text_clip(buf, text_x, inner.y + inner.h - 1, text_max, ui.truncate_runes("Esc cancel   open another node to switch", cols), t.muted, t.bg)
 	}
 }
 
@@ -330,8 +333,9 @@ draw_page_fail :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
 	if a.page_has_node {
 		hex := store.hash_hex(a.page_node, context.temp_allocator)
 		name := page_node_display_name(a, a.page_node)
-		ui.buffer_text(buf, inner.x + 1, inner.y + 4, truncate(name, inner.w - 2), t.muted, t.bg)
-		ui.buffer_text(buf, inner.x + 1, inner.y + 5, truncate(fmt.tprintf("hash  %s", hex), inner.w - 2), t.muted, t.bg)
+		cols := max(0, inner.w - 2)
+		ui.buffer_text_clip(buf, inner.x + 1, inner.y + 4, inner.x + inner.w - 1, ui.truncate_runes(name, cols), t.muted, t.bg)
+		ui.buffer_text_clip(buf, inner.x + 1, inner.y + 5, inner.x + inner.w - 1, ui.truncate_runes(fmt.tprintf("hash  %s", hex), cols), t.muted, t.bg)
 	}
 	if inner.h > 6 {
 		ui.buffer_text(buf, inner.x + 1, inner.y + inner.h - 1, "g retry URL   Esc back to Network", t.muted, t.bg)
