@@ -38,7 +38,6 @@ fault_handler :: proc "c" (sig: posix.Signal) {
 	runtime.print_string(version.GIT_COMMIT)
 	runtime.print_byte(')')
 	runtime.print_byte('\n')
-	print_stack(2)
 	print_hint()
 	_ = posix.signal(sig, auto_cast posix.SIG_DFL)
 	_ = posix.raise(sig)

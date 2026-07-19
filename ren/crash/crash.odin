@@ -2,37 +2,28 @@
 // Copyright (c) 2026 Quad4
 
 /*
-Crash diagnostics: assertion/panic banner and optional stack frames.
+Crash diagnostics: assertion/panic banner without core:debug/trace.
+Odin's trace package links -lstdc++exp (GCC 14+) which breaks slim CI images.
 */
 
 package crash
 
 import "base:runtime"
-import "core:debug/trace"
 import "core:fmt"
 import "core:os"
 
 import "ren:constants"
 import "ren:version"
 
-trace_ctx: trace.Context
-trace_ready: bool
-
 install :: proc() {
-	trace_ready = trace.init(&trace_ctx)
 	install_posix_signals()
 }
 
 close :: proc() {
-	if trace_ready {
-		_ = trace.destroy(&trace_ctx)
-		trace_ready = false
-	}
 }
 
 assertion_failure :: proc(prefix, message: string, loc: runtime.Source_Code_Location) -> ! {
 	print_banner(prefix, message, loc)
-	print_stack(1)
 	print_hint()
 	runtime.trap()
 }
@@ -72,36 +63,6 @@ print_env_line :: proc(key, val: string) {
 		runtime.print_string(val)
 	}
 	runtime.print_byte('\n')
-}
-
-print_stack :: proc(skip: uint) {
-	if !trace_ready || trace.in_resolve(&trace_ctx) {
-		runtime.print_string("(stack trace unavailable build with -debug for frames)\n")
-		return
-	}
-	buf: [64]trace.Frame
-	frames := trace.frames(&trace_ctx, skip, buf[:])
-	if len(frames) == 0 {
-		runtime.print_string("(no stack frames resolved build with -debug)\n")
-		return
-	}
-	runtime.print_string("stack:\n")
-	shown := 0
-	for f, i in frames {
-		fl := trace.resolve(&trace_ctx, f, context.temp_allocator)
-		if fl.loc.file_path == "" && fl.loc.line == 0 {
-			continue
-		}
-		runtime.print_string("  #")
-		runtime.print_int(i)
-		runtime.print_string(" ")
-		runtime.print_caller_location(fl.loc)
-		runtime.print_byte('\n')
-		shown += 1
-	}
-	if shown == 0 {
-		runtime.print_string("(no stack frames resolved build with -debug)\n")
-	}
 }
 
 print_hint :: proc() {
