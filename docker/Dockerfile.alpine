@@ -1,0 +1,28 @@
+# Experimental Alpine musl build.
+# Go cgo librns currently segfaults on musl when calling into the ABI
+# (verified with a tiny C caller of rns_version). Keep this file for when
+# upstream Reticulum-Go / Go musl support is fixed.
+
+ARG ALPINE_IMAGE=alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+
+FROM ${ALPINE_IMAGE} AS builder
+
+ARG ODIN_VERSION=dev-2026-07a
+ARG ODIN_LINUX_AMD64_SHA256=32a7678abc66f1af7353abb5b0b5da47d94b7e663f6d250df29bc9117e864c10
+
+ENV ODIN_VERSION=${ODIN_VERSION} \
+	ODIN_LINUX_AMD64_SHA256=${ODIN_LINUX_AMD64_SHA256} \
+	LIBC=musl
+
+RUN apk add --no-cache ca-certificates clang curl make musl-dev
+
+WORKDIR /src
+COPY . .
+
+RUN rm -f vendor/librns/lib-musl/librns.so \
+	&& sh ci/scripts/install-odin.sh \
+	&& make dist LIBC=musl
+
+FROM scratch AS export
+COPY --from=builder /src/bin/ren-tui /ren-tui
+COPY --from=builder /src/bin/ren-listen /ren-listen

@@ -1,0 +1,245 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing tag to release (example v0.1.0)
+        required: true
+        type: string
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build:
+    name: Build release (${{ matrix.target }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: linux-amd64-glibc
+            runner: ubuntu-24.04
+            libc: glibc
+            cross: ""
+          - target: linux-arm64
+            runner: ubuntu-24.04-arm
+            libc: glibc
+            cross: ""
+          - target: linux-i386
+            runner: ubuntu-24.04
+            libc: glibc
+            cross: zig
+          - target: linux-armv7
+            runner: ubuntu-24.04
+            libc: glibc
+            cross: zig
+          - target: linux-armv6
+            runner: ubuntu-24.04
+            libc: glibc
+            cross: zig
+          - target: darwin-arm64
+            runner: macos-15
+            libc: ""
+            cross: ""
+          - target: darwin-amd64
+            runner: macos-15-intel
+            libc: ""
+            cross: ""
+          - target: windows-amd64
+            runner: ubuntu-24.04
+            libc: ""
+            cross: zig
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Load CI config
+        run: sh ci/scripts/load-ci-env.sh
+
+      - name: Install Linux deps
+        if: runner.os == 'Linux' && matrix.libc != 'musl'
+        run: sh ci/scripts/install-deps.sh
+
+      - name: Install Odin
+        if: matrix.libc != 'musl'
+        run: sh ci/scripts/install-odin.sh
+
+      - name: Setup Zig
+        if: matrix.cross == 'zig'
+        run: sh ci/scripts/setup-zig.sh
+
+      - name: Fetch Reticulum-Go
+        if: matrix.libc != 'musl' && matrix.target != 'linux-amd64-glibc'
+        run: sh ci/scripts/fetch-rns.sh
+
+      - name: Install Go (for librns)
+        if: matrix.libc != 'musl' && matrix.target != 'linux-amd64-glibc'
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "1.24.x"
+
+      - name: Build glibc host / cross
+        if: matrix.libc != 'musl' && matrix.target != 'linux-amd64-glibc'
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -eu
+          if [ -z "${RNS_ROOT:-}" ]; then
+            echo "RNS_ROOT missing after fetch-rns" >&2
+            exit 1
+          fi
+          TARGET="${TARGET}" RNS_ROOT="${RNS_ROOT}" sh ci/scripts/build-target.sh
+
+      - name: Build linux-amd64 glibc (vendored librns)
+        if: matrix.target == 'linux-amd64-glibc'
+        run: make dist LIBC=glibc
+
+      - name: Package
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            TAG="${{ inputs.tag }}"
+          else
+            TAG="${{ github.ref_name }}"
+          fi
+          STAGE="dist/${APP_NAME}-${TAG}-${{ matrix.target }}"
+          mkdir -p "${STAGE}" dist
+          case "${{ matrix.target }}" in
+          windows-*)
+            if ! command -v zip >/dev/null 2>&1; then
+              sudo apt-get update
+              sudo apt-get install -y --no-install-recommends zip
+            fi
+            cp -a bin/ren-tui.exe bin/ren-listen.exe bin/librns.dll "${STAGE}/"
+            cp -a LICENSE README.md "${STAGE}/"
+            (
+              cd dist
+              zip -r "${APP_NAME}-${TAG}-${{ matrix.target }}.zip" "$(basename "${STAGE}")"
+              sha256sum "${APP_NAME}-${TAG}-${{ matrix.target }}.zip" >"${APP_NAME}-${TAG}-${{ matrix.target }}.zip.sha256"
+            )
+            ;;
+          *)
+            LIB=
+            if [ -f bin/librns.so ]; then LIB=bin/librns.so
+            elif [ -f bin/librns.dylib ]; then LIB=bin/librns.dylib
+            fi
+            cp -a bin/ren-tui bin/ren-listen ${LIB} "${STAGE}/"
+            cp -a LICENSE README.md "${STAGE}/"
+            (
+              cd dist
+              tar -czf "${APP_NAME}-${TAG}-${{ matrix.target }}.tar.gz" "$(basename "${STAGE}")"
+              sha256sum "${APP_NAME}-${TAG}-${{ matrix.target }}.tar.gz" >"${APP_NAME}-${TAG}-${{ matrix.target }}.tar.gz.sha256"
+            )
+            ;;
+          esac
+          ls -la dist
+
+      - name: Upload dist
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: release-${{ matrix.target }}
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 30
+
+  windows-smoke:
+    name: Windows smoke
+    needs: build
+    runs-on: windows-2025
+    steps:
+      - name: Download windows artifact
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: release-windows-amd64
+          path: dist
+
+      - name: Smoke
+        shell: bash
+        run: |
+          set -eu
+          ZIP=$(ls dist/*.zip | head -n 1)
+          mkdir -p smoke
+          unzip -q "${ZIP}" -d smoke
+          DIR=$(find smoke -mindepth 1 -maxdepth 1 -type d | head -n 1)
+          cd "${DIR}"
+          ./ren-tui.exe --version
+          ./ren-tui.exe --paths
+          ./ren-listen.exe --version
+
+  publish:
+    name: Publish immutable release
+    needs: [build, windows-smoke]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+
+      - name: Load CI config
+        run: sh ci/scripts/load-ci-env.sh
+
+      - name: Resolve tag
+        id: meta
+        run: |
+          set -eu
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ inputs.tag }}" >>"${GITHUB_OUTPUT}"
+          else
+            echo "tag=${{ github.ref_name }}" >>"${GITHUB_OUTPUT}"
+          fi
+
+      - name: Download artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+          pattern: release-*
+          merge-multiple: true
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -eu
+          if gh release view "${TAG}" >/dev/null 2>&1; then
+            STATE=$(gh release view "${TAG}" --json isDraft --jq .isDraft)
+            if [ "${STATE}" != "true" ]; then
+              echo "release ${TAG} already published (immutable releases cannot add assets)" >&2
+              exit 1
+            fi
+          else
+            gh release create "${TAG}" \
+              --draft \
+              --generate-notes \
+              --title "${APP_NAME} ${TAG}" \
+              --repo "${{ github.repository }}"
+          fi
+
+      - name: Upload assets then publish
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          set -eu
+          set -- artifacts/*.tar.gz artifacts/*.zip artifacts/*.sha256
+          if [ ! -e "$1" ]; then
+            echo "no release assets found" >&2
+            exit 1
+          fi
+          gh release upload "${TAG}" "$@" --clobber --repo "${{ github.repository }}"
+          gh release edit "${TAG}" --draft=false --repo "${{ github.repository }}"
+          gh release view "${TAG}" --repo "${{ github.repository }}"

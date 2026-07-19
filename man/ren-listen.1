@@ -1,0 +1,53 @@
+.\" SPDX-License-Identifier: 0BSD
+.TH REN-LISTEN 1 "2026" "ren-tui 0.1.0" "User Commands"
+.SH NAME
+ren-listen \- listen for LXMF and NomadNet announces
+.SH SYNOPSIS
+.B ren-listen
+[\fIOPTIONS\fR]
+.SH DESCRIPTION
+.B ren-listen
+starts a short-lived Reticulum session, announces local destinations, and prints
+heard
+.B lxmf.delivery
+and
+.B nomadnetwork.node
+peers. Useful for smoke-checking connectivity without the full TUI.
+.SH OPTIONS
+.TP
+.BR \-h ", " \-\-help
+Show help and exit.
+.TP
+.BR \-v ", " \-V ", " \-\-version
+Show version and exit.
+.TP
+.B \-\-paths
+Print resolved config paths and exit.
+.TP
+.BR \-t ", " \-\-timeout " " \fISECONDS\fR
+Listen duration. Default: 30.
+.TP
+.BR \-c ", " \-\-rns\-config " " \fIPATH\fR
+Reticulum config file.
+.TP
+.BI \-\-config " PATH"
+App config file (for identity path resolution).
+.TP
+.BI \-\-data\-dir " PATH"
+Data directory override.
+.SH ENVIRONMENT
+.TP
+.B REN_RNS_CONFIG
+Override Reticulum config path.
+.SH EXIT STATUS
+.TP
+.B 0
+At least one LXMF or NomadNet announce was heard, or a utility action succeeded.
+.TP
+.B 1
+Session failure or no relevant announces heard.
+.TP
+.B 2
+Bad command-line arguments.
+.SH SEE ALSO
+.BR ren-tui (1)

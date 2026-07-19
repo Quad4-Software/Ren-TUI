@@ -1,0 +1,5 @@
+# Multi-arch librns outputs (built by CI / make cross). Host glibc amd64 stays in lib/librns.so.
+lib/linux/
+lib/darwin/
+lib/windows/
+!lib/linux/amd64/.gitkeep

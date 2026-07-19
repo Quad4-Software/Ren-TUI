@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }} / ${{ matrix.suite }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-22.04]
+        suite:
+          - test-smoke
+          - test-unit
+          - test-property
+          - test-fuzz
+          - test-acceptance
+          - test-e2e
+          - test-cross-terminal
+          - test-mutation
+          - test-race
+          - test-chaos
+          - test-interop
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Load CI config
+        run: sh ci/scripts/load-ci-env.sh
+
+      - name: Install build deps
+        run: sh ci/scripts/install-deps.sh
+
+      - name: Install Odin
+        run: sh ci/scripts/install-odin.sh
+
+      - name: Run suite
+        run: make ${{ matrix.suite }}
+
+  build:
+    name: Build glibc (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-22.04]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Load CI config
+        run: sh ci/scripts/load-ci-env.sh
+
+      - name: Install build deps
+        run: sh ci/scripts/install-deps.sh
+
+      - name: Install Odin
+        run: sh ci/scripts/install-odin.sh
+
+      - name: Build
+        run: make all LIBC=glibc
+
+      - name: Smoke
+        run: sh ci/scripts/smoke.sh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ren-tui-${{ matrix.os }}-amd64-glibc
+          path: |
+            bin/ren-tui
+            bin/ren-listen
+            bin/librns.so
+          if-no-files-found: error
+          retention-days: 14
+
+  build-musl:
+    name: Build musl (compile check)
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Load CI config
+        run: sh ci/scripts/load-ci-env.sh
+
+      - name: Compile musl binaries
+        run: |
+          docker build \
+            -f docker/Dockerfile.alpine \
+            --target export \
+            --build-arg ALPINE_IMAGE="${ALPINE_IMAGE}" \
+            --build-arg ODIN_VERSION="${ODIN_VERSION}" \
+            --build-arg ODIN_LINUX_AMD64_SHA256="${ODIN_LINUX_AMD64_SHA256}" \
+            -o type=local,dest=./out-musl \
+            .
+          test -x out-musl/ren-tui
+          test -x out-musl/ren-listen
+
+      - name: Upload musl compile artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ren-tui-linux-amd64-musl-compile
+          path: out-musl/*
+          if-no-files-found: error
+          retention-days: 7
+
+  gate:
+    name: CI gate
+    if: always()
+    needs: [test, build, build-musl]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require green jobs
+        run: |
+          test "${{ needs.test.result }}" = "success"
+          test "${{ needs.build.result }}" = "success"
+          test "${{ needs.build-musl.result }}" = "success"

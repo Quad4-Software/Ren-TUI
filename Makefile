@@ -1,0 +1,213 @@
+# Ren TUI
+# Build with vendored librns. Requires odin on PATH.
+
+ODIN        ?= odin
+ROOT        := $(CURDIR)
+PREFIX      ?= /usr/local
+DESTDIR     ?=
+BINDIR      := $(PREFIX)/bin
+MANDIR      := $(PREFIX)/share/man/man1
+LIBDIR      := $(PREFIX)/lib/ren-tui
+
+LIBC        ?= auto
+ifeq ($(LIBC),auto)
+LIBC := $(shell $(ROOT)/ci/scripts/detect-libc.sh)
+endif
+
+VENDOR_RNS  := $(ROOT)/vendor/librns
+RPATH        ?= $(ROOT)/bin
+ifeq ($(LIBC),musl)
+VENDOR_LIB  := $(VENDOR_RNS)/lib-musl
+LIBRNS      := $(VENDOR_LIB)/librns.a
+LINKER_FLAGS := -extra-linker-flags:"-L$(VENDOR_LIB) -lpthread -lm"
+else
+VENDOR_LIB  := $(VENDOR_RNS)/lib
+LIBRNS      := $(VENDOR_LIB)/librns.so
+LINKER_FLAGS := -extra-linker-flags:"-L$(VENDOR_LIB) -Wl,-rpath,$(RPATH)"
+endif
+VENDOR_ODIN := $(VENDOR_RNS)/odin
+BIN_LIBRNS  := bin/librns.so
+
+RNS_ROOT    ?=
+LIVE_SECS   ?= 30
+
+REMOTE_GITHUB ?= git@github.com:Quad4-Software/Ren-TUI.git
+REMOTE_RNS    ?= rns://06a54b505bb67b25ef3f8097e8001edc/public/ren-tui
+
+COLLECTION   := -collection:ren=$(ROOT)/ren -collection:rns=$(VENDOR_ODIN)
+OUT          := bin/ren-tui
+LISTEN       := bin/ren-listen
+
+GIT_COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+BUILD_DATE    ?= $(shell date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || echo unknown)
+VERSION_ODIN  := ren/version/version.odin
+
+ODIN_TEST_ENV := LIBRARY_PATH="$(VENDOR_LIB):$${LIBRARY_PATH:-}" LD_LIBRARY_PATH="$(ROOT)/bin:$${LD_LIBRARY_PATH:-}"
+ODIN_TEST_FLAGS := -collection:ren=$(ROOT)/ren -collection:rns=$(VENDOR_ODIN) $(LINKER_FLAGS)
+ODIN_TEST_SERIAL_FLAGS := $(ODIN_TEST_FLAGS) -define:ODIN_TEST_THREADS=1
+
+.PHONY: all clean install uninstall test \
+	test-smoke test-unit test-property test-fuzz test-acceptance \
+	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop \
+	test-live run listen vendor-librns git-commit remotes help man check dist cross
+
+all: $(OUT) $(LISTEN)
+
+# Cross / multi-OS build. Example: make cross TARGET=windows-amd64 RNS_ROOT=../Reticulum-Go
+TARGET ?=
+cross:
+	@test -n "$(TARGET)" || (echo "usage: make cross TARGET=linux-arm64|windows-amd64|..." >&2; exit 2)
+	TARGET="$(TARGET)" RNS_ROOT="$(RNS_ROOT)" sh $(ROOT)/ci/scripts/build-target.sh
+
+
+dist: $(OUT) $(LISTEN)
+ifeq ($(LIBC),musl)
+	@true
+else
+	patchelf --set-rpath '$$ORIGIN' $(OUT) $(LISTEN)
+endif
+
+help:
+	@printf '%s\n' \
+		'Targets:' \
+		'  all            build ren-tui and ren-listen (default)' \
+		'  run            build and run ren-tui' \
+		'  listen         build and run ren-listen' \
+		'  test           run all test suites' \
+		'  install        install binaries, librns, and man pages to PREFIX' \
+		'  uninstall      remove installed files' \
+		'  man            show man page sources under man/' \
+		'  remotes        configure origin fetch=GitHub, push=GitHub+RNS' \
+		'  vendor-librns  refresh vendored librns (RNS_ROOT=...)' \
+		'  cross          build for TARGET= (uses ci/scripts/build-target.sh)' \
+		'  clean          remove bin/' \
+		'  dist           build then set RUNPATH to $$ORIGIN (needs patchelf)' \
+		'' \
+		'Variables: PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) LIVE_SECS=$(LIVE_SECS) LIBC=$(LIBC) TARGET= RNS_ROOT='
+
+git-commit:
+	@sed -i 's/^GIT_COMMIT :: ".*"/GIT_COMMIT :: "$(GIT_COMMIT)"/' $(VERSION_ODIN)
+	@sed -i 's/^BUILD_DATE :: ".*"/BUILD_DATE :: "$(BUILD_DATE)"/' $(VERSION_ODIN)
+
+$(BIN_LIBRNS): $(LIBRNS)
+ifeq ($(LIBC),musl)
+	mkdir -p bin
+else
+	mkdir -p bin
+	cp -f $(LIBRNS) $(BIN_LIBRNS)
+endif
+
+$(OUT): git-commit cmd/ren-tui/main.odin $(shell find ren -name '*.odin' 2>/dev/null) $(BIN_LIBRNS)
+	mkdir -p bin
+	LIBRARY_PATH="$(VENDOR_LIB):$${LIBRARY_PATH:-}" \
+	$(ODIN) build cmd/ren-tui -out:$(OUT) $(COLLECTION) $(LINKER_FLAGS)
+
+$(LISTEN): git-commit cmd/ren-listen/main.odin $(shell find ren -name '*.odin' 2>/dev/null) $(BIN_LIBRNS)
+	mkdir -p bin
+	LIBRARY_PATH="$(VENDOR_LIB):$${LIBRARY_PATH:-}" \
+	$(ODIN) build cmd/ren-listen -out:$(LISTEN) $(COLLECTION) $(LINKER_FLAGS)
+
+man:
+	@ls -1 man/*.1
+
+install:
+ifeq ($(LIBC),musl)
+	$(MAKE) all LIBC=musl
+	install -d $(DESTDIR)$(BINDIR)
+	install -d $(DESTDIR)$(MANDIR)
+	install -m 755 $(OUT) $(DESTDIR)$(BINDIR)/ren-tui
+	install -m 755 $(LISTEN) $(DESTDIR)$(BINDIR)/ren-listen
+	install -m 644 man/ren-tui.1 $(DESTDIR)$(MANDIR)/ren-tui.1
+	install -m 644 man/ren-listen.1 $(DESTDIR)$(MANDIR)/ren-listen.1
+else
+	$(MAKE) all RPATH=$(LIBDIR)
+	install -d $(DESTDIR)$(BINDIR)
+	install -d $(DESTDIR)$(LIBDIR)
+	install -d $(DESTDIR)$(MANDIR)
+	install -m 755 $(OUT) $(DESTDIR)$(BINDIR)/ren-tui
+	install -m 755 $(LISTEN) $(DESTDIR)$(BINDIR)/ren-listen
+	install -m 755 $(BIN_LIBRNS) $(DESTDIR)$(LIBDIR)/librns.so
+	install -m 644 man/ren-tui.1 $(DESTDIR)$(MANDIR)/ren-tui.1
+	install -m 644 man/ren-listen.1 $(DESTDIR)$(MANDIR)/ren-listen.1
+	$(MAKE) all RPATH=$(ROOT)/bin
+endif
+
+
+uninstall:
+	rm -f $(DESTDIR)$(BINDIR)/ren-tui
+	rm -f $(DESTDIR)$(BINDIR)/ren-listen
+	rm -f $(DESTDIR)$(LIBDIR)/librns.so
+	rm -f $(DESTDIR)$(MANDIR)/ren-tui.1
+	rm -f $(DESTDIR)$(MANDIR)/ren-listen.1
+	-rmdir $(DESTDIR)$(LIBDIR) 2>/dev/null || true
+
+check: test
+
+test: test-smoke test-unit test-property test-fuzz test-acceptance \
+	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop
+
+test-smoke: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/smoke $(ODIN_TEST_SERIAL_FLAGS)
+
+test-unit: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/unit $(ODIN_TEST_SERIAL_FLAGS)
+
+test-property: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/property $(ODIN_TEST_FLAGS)
+
+test-fuzz: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/fuzz $(ODIN_TEST_FLAGS)
+
+test-acceptance: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/acceptance $(ODIN_TEST_FLAGS)
+
+test-e2e: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/e2e $(ODIN_TEST_SERIAL_FLAGS)
+
+test-cross-terminal: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/cross_terminal $(ODIN_TEST_SERIAL_FLAGS)
+
+test-mutation: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/mutation $(ODIN_TEST_FLAGS)
+
+test-race: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/race $(ODIN_TEST_SERIAL_FLAGS)
+
+test-chaos: git-commit $(BIN_LIBRNS)
+	$(ODIN_TEST_ENV) $(ODIN) test tests/chaos $(ODIN_TEST_SERIAL_FLAGS)
+
+test-interop:
+	python3 tests/interop/python_lxmf_interop.py
+
+test-live: $(LISTEN)
+	./$(LISTEN) -t $(LIVE_SECS) $${REN_RNS_CONFIG:+-c $$REN_RNS_CONFIG}
+
+run: $(OUT)
+	./$(OUT)
+
+listen: $(LISTEN)
+	./$(LISTEN) -t $(LIVE_SECS)
+
+remotes:
+	@if git remote get-url origin >/dev/null 2>&1; then \
+		git remote set-url origin $(REMOTE_GITHUB); \
+	else \
+		git remote add origin $(REMOTE_GITHUB); \
+	fi
+	@git remote set-url --push origin $(REMOTE_GITHUB)
+	@git remote set-url --add --push origin $(REMOTE_RNS)
+	@git remote -v
+
+vendor-librns:
+	@test -n "$(RNS_ROOT)" || (echo "usage: make vendor-librns RNS_ROOT=/path/to/Reticulum-Go" >&2; exit 2)
+	cd "$(RNS_ROOT)" && task build-librns
+	mkdir -p "$(VENDOR_LIB)" "$(VENDOR_RNS)/include" "$(VENDOR_ODIN)/rns" "$(VENDOR_RNS)/lib/linux/amd64"
+	cp -f "$(RNS_ROOT)/bin/librns.so" "$(LIBRNS)"
+	cp -f "$(RNS_ROOT)/bin/librns.so" "$(VENDOR_RNS)/lib/linux/amd64/librns.so"
+	cp -f "$(RNS_ROOT)/bin/rns.h" "$(VENDOR_RNS)/include/rns.h"
+	cp -a "$(RNS_ROOT)/bindings/odin/rns/." "$(VENDOR_ODIN)/rns/"
+	mkdir -p bin
+	cp -f "$(LIBRNS)" "$(BIN_LIBRNS)"
+
+clean:
+	rm -rf bin
