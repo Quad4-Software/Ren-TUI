@@ -6,6 +6,7 @@ New work goes under the `[draft]` section only. Do not edit `[released]` section
 
 - Fix NomadNet links with backtick request vars (hash:/page/x`a=1|b=2) so var_* reaches the node
 - Keep last page request vars for URL bar and identify reload
+- Alpine musl CI rebuilds librns.a from Reticulum-Go so new ABI symbols (destination_encrypt, packet_send) link
 - Fix Conversations open/chat: filtered list indexing, unread clear, reply in-tab, Network LXMF opens conversation
 - Persist LXMF NomadNet and propagation peers across reboot via peers.msgpack hydrate/save
 - Custom contact names in Conversations (r rename) with announce-name fallback

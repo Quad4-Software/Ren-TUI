@@ -8,6 +8,7 @@ bin/
 *.log
 .DS_Store
 out/
+out-musl/
 dist/
 .deps/
 result
