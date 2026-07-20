@@ -3,7 +3,7 @@
 Contents:
 
 - `lib/librns.so` host Linux shared library (glibc amd64 default)
-- `lib-musl/librns.a` optional musl static archive
+- `lib-musl/librns.a` optional musl static archive (refresh with `make vendor-librns-musl`)
 - `lib/<os>/<arch>/` optional multi-arch outputs from CI / `make cross`
 - `include/rns.h` C header
 - `odin/rns/` Odin bindings (`collection:rns`)
@@ -12,6 +12,13 @@ Rebuild host library from an external Reticulum-Go tree:
 
 ```
 make vendor-librns RNS_ROOT=/path/to/Reticulum-Go
+```
+
+Rebuild the musl static archive (needs Go + musl libc/headers):
+
+```
+make vendor-librns-musl
+# or: RNS_ROOT=/path/to/Reticulum-Go make vendor-librns-musl
 ```
 
 Cross / multi-OS builds (also rebuilds matching librns when `RNS_ROOT` is set):

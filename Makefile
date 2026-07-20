@@ -50,7 +50,7 @@ ODIN_TEST_SERIAL_FLAGS := $(ODIN_TEST_FLAGS) -define:ODIN_TEST_THREADS=1
 	test-smoke test-unit test-property test-fuzz test-acceptance \
 	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop \
 	test-oracle test-blackbox \
-	test-live run listen vendor-librns remotes help man check dist cross bench \
+	test-live run listen vendor-librns vendor-librns-musl remotes help man check dist cross bench \
 	package package-deb package-rpm package-arch package-nix
 
 all: $(OUT) $(LISTEN)
@@ -83,7 +83,8 @@ help:
 		'  uninstall      remove installed files' \
 		'  man            show man page sources under man/' \
 		'  remotes        configure origin fetch=GitHub, push=GitHub+RNS' \
-		'  vendor-librns  refresh vendored librns (RNS_ROOT=...)' \
+		'  vendor-librns  refresh vendored glibc librns.so (RNS_ROOT=...)' \
+		'  vendor-librns-musl  rebuild vendor/librns/lib-musl/librns.a (needs go+musl)' \
 		'  cross          build for TARGET= (uses ci/scripts/build-target.sh)' \
 		'  clean          remove bin/' \
 		'  dist           build then set RUNPATH to $$ORIGIN (needs patchelf)' \
@@ -233,13 +234,16 @@ remotes:
 vendor-librns:
 	@test -n "$(RNS_ROOT)" || (echo "usage: make vendor-librns RNS_ROOT=/path/to/Reticulum-Go" >&2; exit 2)
 	cd "$(RNS_ROOT)" && task build-librns
-	mkdir -p "$(VENDOR_LIB)" "$(VENDOR_RNS)/include" "$(VENDOR_ODIN)/rns" "$(VENDOR_RNS)/lib/linux/amd64"
-	cp -f "$(RNS_ROOT)/bin/librns.so" "$(LIBRNS)"
+	mkdir -p "$(VENDOR_RNS)/lib" "$(VENDOR_RNS)/include" "$(VENDOR_ODIN)/rns" "$(VENDOR_RNS)/lib/linux/amd64"
+	cp -f "$(RNS_ROOT)/bin/librns.so" "$(VENDOR_RNS)/lib/librns.so"
 	cp -f "$(RNS_ROOT)/bin/librns.so" "$(VENDOR_RNS)/lib/linux/amd64/librns.so"
 	cp -f "$(RNS_ROOT)/bin/rns.h" "$(VENDOR_RNS)/include/rns.h"
 	cp -a "$(RNS_ROOT)/bindings/odin/rns/." "$(VENDOR_ODIN)/rns/"
 	mkdir -p bin
-	cp -f "$(LIBRNS)" "$(BIN_LIBRNS)"
+	cp -f "$(VENDOR_RNS)/lib/librns.so" "$(BIN_LIBRNS)"
+
+vendor-librns-musl:
+	RNS_ROOT="$(RNS_ROOT)" sh $(ROOT)/ci/scripts/build-librns-musl.sh
 
 clean:
 	rm -rf bin

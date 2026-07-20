@@ -33,9 +33,16 @@ Docker images remain **linux/amd64** (glibc default). Multi-OS binaries
 
 ## Alpine / musl
 
-`Dockerfile.alpine` builds musl binaries (static `librns.a`).
+`Dockerfile.alpine` rebuilds a fresh musl `librns.a` from Reticulum-Go
+(c-archive stage) then links ren-tui/ren-listen. The in-tree
+`vendor/librns/lib-musl/librns.a` is only a fallback and can lag the ABI.
+
 Go cgo librns currently segfaults on musl when entering the ABI so Alpine is not the default runtime image yet.
 Makefile still supports `LIBC=musl` for compile checks and future use.
+
+```
+docker build -f docker/Dockerfile.alpine --target export -o type=local,dest=./out-musl .
+```
 
 ## Override pins
 

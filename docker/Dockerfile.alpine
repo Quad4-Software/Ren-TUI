@@ -2,8 +2,29 @@
 # Go cgo librns currently segfaults on musl when calling into the ABI
 # (verified with a tiny C caller of rns_version). Keep this file for when
 # upstream Reticulum-Go / Go musl support is fixed.
+#
+# The vendored lib-musl/librns.a can lag the Odin ABI. This image always
+# rebuilds a musl c-archive from Reticulum-Go before linking ren-tui.
 
+ARG GOLANG_IMAGE=golang:1.26-alpine
 ARG ALPINE_IMAGE=alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+
+FROM ${GOLANG_IMAGE} AS librns
+ARG RNS_REPO=https://github.com/Quad4-Software/Reticulum-Go.git
+# PacketSend / DestinationEncrypt live on Reticulum-Go dev until merged to master.
+ARG RNS_REF=dev
+
+RUN apk add --no-cache git gcc musl-dev binutils
+
+WORKDIR /rns
+RUN git clone --depth 1 --branch "${RNS_REF}" "${RNS_REPO}" . \
+	|| git clone --depth 1 "${RNS_REPO}" .
+
+RUN mkdir -p /out \
+	&& CGO_ENABLED=1 go build -mod=vendor -buildmode=c-archive -o /out/librns.a ./cmd/librns \
+	&& cp include/rns.h /out/rns.h \
+	&& nm /out/librns.a | grep -q 'T rns_destination_encrypt' \
+	&& nm /out/librns.a | grep -q 'T rns_packet_send'
 
 FROM ${ALPINE_IMAGE} AS builder
 
@@ -19,7 +40,10 @@ RUN apk add --no-cache ca-certificates clang curl make musl-dev
 WORKDIR /src
 COPY . .
 
-RUN rm -f vendor/librns/lib-musl/librns.so \
+COPY --from=librns /out/librns.a vendor/librns/lib-musl/librns.a
+COPY --from=librns /out/rns.h vendor/librns/include/rns.h
+
+RUN rm -f vendor/librns/lib-musl/librns.so vendor/librns/lib-musl/librns.h \
 	&& sh ci/scripts/install-odin.sh \
 	&& make dist LIBC=musl
 
