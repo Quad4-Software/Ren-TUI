@@ -112,6 +112,13 @@ session_create :: proc(s: ^Session, cfg: ^store.Config, display_name: string) ->
 		return false
 	}
 	s.delivery_dest = dest
+	// Python LXMRouter.delivery_packet calls packet.prove(). ProveAll makes
+	// Reticulum-Go return proofs for opportunistic and direct link data so
+	// senders can mark DELIVERED instead of waiting forever.
+	if rns.destination_set_proof_strategy(s.delivery_dest, rns.PROVE_ALL) != .Ok {
+		session_event_push(s, .Error, "delivery prove strategy failed")
+		return false
+	}
 
 	ndest, nerr2 := rns.destination_create(s.node, s.rns_identity, "nomadnetwork", {"node"}, true)
 	if nerr2 == .Ok {

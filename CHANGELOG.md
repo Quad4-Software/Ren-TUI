@@ -2,6 +2,15 @@
 
 New work goes under the [draft] section only. Do not edit [released] sections after a tag ships.
 
+## 0.2.1 - 2026-07-24 [draft]
+
+- Return Reticulum delivery proofs on lxmf.delivery (ProveAll) so NomadNet and Python LXMF can mark messages DELIVERED
+- librns destination_set_proof_strategy plus link auto-prove for inbound direct DATA
+- Conversations list sorted by last activity with unread marker and relative time
+- Conversations open latest messages on select without forcing reply mode on click
+- Message headers use NomadNet-style direction and time (ok <- 2h ago)
+- Conversations search filter line and u sync shortcut
+
 ## 0.2.0 - 2026-07-24 [released]
 
 - Fix NomadNet links with request vars (hash:/page/x with a=1 and b=2) so var_* reaches the node

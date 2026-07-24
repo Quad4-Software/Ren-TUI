@@ -230,7 +230,7 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 					refresh_network_list_if_needed(a)
 				}
 			case 'u', 'U':
-				if a.tab == .Network {
+				if a.tab == .Network || a.tab == .Conversations {
 					try_sync_propagation(a)
 				}
 			case 'm', 'M':
@@ -308,12 +308,12 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		visible := max(1, a.list_rect.h)
 		if ev.kind == .Up {
 			ui.list_move(&a.conv_list, -1, visible)
-			a.msg_scroll = 0
 			conv_mark_selected_read(a)
+			conv_scroll_to_latest(a)
 		} else if ev.kind == .Down {
 			ui.list_move(&a.conv_list, 1, visible)
-			a.msg_scroll = 0
 			conv_mark_selected_read(a)
+			conv_scroll_to_latest(a)
 		} else if ev.kind == .Page_Up {
 			a.msg_scroll = max(0, a.msg_scroll - visible)
 		} else if ev.kind == .Page_Down {
@@ -454,9 +454,8 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 		switch a.tab {
 		case .Conversations:
 			ui.list_click(&a.conv_list, row, visible)
-			a.msg_scroll = 0
 			conv_mark_selected_read(a)
-			a.conv_replying = true
+			conv_scroll_to_latest(a)
 		case .Network:
 			ui.list_click(&a.net_list, row, network_list_visible(a))
 			network_skip_header(a, 1, network_list_visible(a))
@@ -517,10 +516,12 @@ handle_session_events :: proc(a: ^App) {
 			set_status(a, ev.detail if ev.detail != "" else "message received", STATUS_HOLD)
 			a.recv_count += 1
 			refresh_conv_list(a)
+			conv_scroll_to_latest(a)
 			mark_dirty(a)
 		case .Send_Ok:
 			set_status(a, ev.detail if ev.detail != "" else "sent", STATUS_HOLD)
 			refresh_conv_list(a)
+			conv_scroll_to_latest(a)
 			mark_dirty(a)
 		case .Send_Failed, .Page_Ok, .Page_Failed, .Error, .Online, .Offline:
 			if ev.detail != "" {
