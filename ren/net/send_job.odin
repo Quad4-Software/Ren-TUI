@@ -124,6 +124,7 @@ send_try_failover :: proc(s: ^Session, reason: string) -> bool {
 	if !send_prepare_method(s, .Propagated) {
 		delete(s.send.wire)
 		s.send.wire = nil
+		s.send.failed_over = false
 		return false
 	}
 	send_set_status(s, fmt.tprintf("failover to propagate (%s)", reason))

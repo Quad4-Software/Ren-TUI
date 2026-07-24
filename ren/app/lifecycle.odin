@@ -127,7 +127,7 @@ update_status :: proc(a: ^App) {
 		a.status_right = status_copy_buf(a.status_hold[:], &a.status_hold_len, net.session_page_status(&a.session))
 		return
 	}
-	if a.status_hold_len > 0 && time.tick_diff(time.tick_now(), a.status_until) > 0 {
+	if a.status_hold_len > 0 && a.tab != .Page && time.tick_diff(time.tick_now(), a.status_until) > 0 {
 		a.status_right = string(a.status_hold[:a.status_hold_len])
 		return
 	}

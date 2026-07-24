@@ -113,7 +113,7 @@ field_display_text :: proc(
 	case .Text, .None:
 		shown := value
 		if masked {
-			n := min(max(1, width), max(1, len(shown)))
+			n := min(max(1, width), max(1, string_cols(shown)))
 			if len(shown) == 0 {
 				n = min(width, 1)
 			}
@@ -121,9 +121,7 @@ field_display_text :: proc(
 			shown = stars
 		}
 		w := max(1, width)
-		if len(shown) > w {
-			shown = shown[:w]
-		}
+		shown = truncate_cols(shown, w)
 		lab := label if label != "" else "field"
 		return strings.concatenate({"[", lab, "=", shown, "]"}, allocator)
 	}
