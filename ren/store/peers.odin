@@ -180,7 +180,7 @@ peers_encode :: proc(peers: []Peer) -> ([]u8, bool) {
 	defer lxmf.writer_destroy(&w)
 	lxmf.write_array_header(&w, len(peers))
 	for p in peers {
-		lxmf.write_array_header(&w, 8)
+		lxmf.write_array_header(&w, 9)
 		h := p.hash
 		ih := p.identity_hash
 		lxmf.write_bin(&w, h[:])
@@ -195,6 +195,12 @@ peers_encode :: proc(peers: []Peer) -> ([]u8, bool) {
 		lxmf.write_int(&w, i64(p.hops))
 		lxmf.write_f64(&w, p.last_heard)
 		lxmf.write_bool(&w, p.hops_known)
+		if p.has_sign_pub {
+			sp := p.sign_pub
+			lxmf.write_bin(&w, sp[:])
+		} else {
+			lxmf.write_nil(&w)
+		}
 	}
 	out := make([]u8, len(w.buf))
 	copy(out, w.buf[:])
@@ -261,6 +267,12 @@ peers_decode :: proc(data: []u8) -> ([dynamic]Peer, bool) {
 			}
 		} else {
 			p.hops_known = p.hops > 0
+		}
+		if len(item.array) >= 9 {
+			if sb, ok := lxmf.as_bytes(item.array[8]); ok && len(sb) == 32 {
+				copy(p.sign_pub[:], sb)
+				p.has_sign_pub = true
+			}
 		}
 		append(&out, p)
 	}
@@ -337,6 +349,8 @@ peers_spill_upsert :: proc(path: string, peer: Peer) -> bool {
 			p.hops = peer.hops
 			p.hops_known = peer.hops_known
 			p.last_heard = peer.last_heard
+			p.sign_pub = peer.sign_pub
+			p.has_sign_pub = peer.has_sign_pub
 			found = true
 			break
 		}
@@ -351,6 +365,8 @@ peers_spill_upsert :: proc(path: string, peer: Peer) -> bool {
 			hops_known = peer.hops_known,
 			last_heard = peer.last_heard,
 			kind = peer.kind,
+			sign_pub = peer.sign_pub,
+			has_sign_pub = peer.has_sign_pub,
 		})
 	}
 	// Cap spill by dropping coldest
@@ -396,6 +412,8 @@ directory_promote_from_spill :: proc(d: ^Directory, dest: [HASH_LEN]u8) -> bool 
 		hops_known = p.hops_known,
 		last_heard = p.last_heard,
 		kind = p.kind,
+		sign_pub = p.sign_pub,
+		has_sign_pub = p.has_sign_pub,
 	})
 	delete(cold[idx].display_name)
 	ordered_remove(&cold, idx)

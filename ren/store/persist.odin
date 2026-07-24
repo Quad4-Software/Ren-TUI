@@ -158,6 +158,17 @@ conversations_decode_file :: proc(c: ^Conversations, peer: [HASH_LEN]u8, data: [
 	}
 
 	title := ""
+	if ver >= 1 {
+		if pb, ok := lxmf.as_bytes(root.array[1]); ok && len(pb) == HASH_LEN {
+			file_peer: [HASH_LEN]u8
+			copy(file_peer[:], pb)
+			if file_peer != peer {
+				return false
+			}
+		} else if ver >= 2 {
+			return false
+		}
+	}
 	if root.array[title_i].kind == .Str {
 		title = root.array[title_i].str
 	} else if b, ok := lxmf.as_bytes(root.array[title_i]); ok {
