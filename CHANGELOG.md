@@ -4,12 +4,16 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 
 ## 0.2.1 - 2026-07-24 [draft]
 
-- Return Reticulum delivery proofs on lxmf.delivery (ProveAll) so NomadNet and Python LXMF can mark messages DELIVERED
+- Fix LXMF delivery proofs stuck at 50 percent on NomadNet/Python: responder links sign proofs with the destination identity key (not ephemeral Ed25519)
+- librns Link.Validate uses peer_sig_pub like Python so receipts can reach DELIVERED
+- Packet receipts keep the sending link for proof validation
+- Return Reticulum delivery proofs on lxmf.delivery (ProveAll) for opportunistic and direct DATA
 - librns destination_set_proof_strategy plus link auto-prove for inbound direct DATA
 - Conversations list sorted by last activity with unread marker and relative time
 - Conversations open latest messages on select without forcing reply mode on click
 - Message headers use NomadNet-style direction and time (ok <- 2h ago)
 - Conversations search filter line and u sync shortcut
+- Interop: offline Python proof-key contract plus REN_LIVE_PROOF live DIRECT DELIVERED check
 
 ## 0.2.0 - 2026-07-24 [released]
 
