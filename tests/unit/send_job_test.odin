@@ -118,6 +118,8 @@ test_send_job_begin_to_success :: proc(t: ^testing.T) {
 	dest: [store.HASH_LEN]u8
 	dest[0] = 0xab
 	testing.expect(t, net.session_send_begin(&s, dest, "", "hello", &convs, &dir, nil))
+	testing.expect_value(t, len(convs.items), 1)
+	testing.expect_value(t, len(convs.items[0].messages), 1)
 	for _ in 0 ..< 8 {
 		if !net.session_send_busy(&s) {
 			break
@@ -128,6 +130,7 @@ test_send_job_begin_to_success :: proc(t: ^testing.T) {
 	testing.expect(t, !net.session_send_busy(&s))
 	testing.expect_value(t, fake.opened, 1)
 	testing.expect_value(t, fake.sent, 1)
+	testing.expect_value(t, len(convs.items[0].messages), 1)
 	testing.expect(t, net.session_events_has(&s, .Send_Ok) || s.status == "sent")
 	net.session_send_cancel(&s)
 }
@@ -177,8 +180,9 @@ test_send_job_link_open_failed :: proc(t: ^testing.T) {
 	dest: [store.HASH_LEN]u8
 	dest[1] = 1
 	testing.expect(t, net.session_send_begin(&s, dest, "", "x", &convs, &dir, nil))
-	// First open fails then retries once then fails
-	for _ in 0 ..< 4 {
+	testing.expect_value(t, len(convs.items[0].messages), 1)
+	// First open fails then rediscovers path then open fails again
+	for _ in 0 ..< 12 {
 		if !net.session_send_busy(&s) {
 			break
 		}
@@ -186,6 +190,7 @@ test_send_job_link_open_failed :: proc(t: ^testing.T) {
 	}
 	testing.expect(t, !s.send.ok)
 	testing.expect(t, s.status == "link open failed" || strings_has_send_failed(&s))
+	testing.expect_value(t, len(convs.items[0].messages), 1)
 	net.session_send_cancel(&s)
 }
 

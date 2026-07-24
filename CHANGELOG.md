@@ -14,6 +14,11 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 - Message headers use NomadNet-style direction and time (ok <- 2h ago)
 - Conversations search filter line and u sync shortcut
 - Interop: offline Python proof-key contract plus REN_LIVE_PROOF live DIRECT DELIVERED check
+- Wait for path (and retry) before LXMF link open so unannounced peers do not fail instantly
+- Persist outbound messages when send begins so path or link failures keep the text
+- Keep LXMF delivery links open after send for backchannel replies
+- Prove opportunistic packets only after successful decrypt and delivery
+- Wire inbound link DATA callbacks synchronously so the first packet is not lost
 
 ## 0.2.0 - 2026-07-24 [released]
 
