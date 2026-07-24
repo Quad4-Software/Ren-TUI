@@ -208,9 +208,7 @@ page_field_edit_rune :: proc(a: ^App, ev: ui.Event) -> bool {
 	}
 	val := ui.input_value(&tmp)
 	w := f.width if f.width > 0 else 24
-	if len(val) > w {
-		val = val[:w]
-	}
+	val = ui.truncate_runes(val, w)
 	delete(f.value)
 	f.value = strings.clone(val)
 	page_form_sync_spans(a)

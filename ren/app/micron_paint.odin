@@ -108,12 +108,28 @@ paint_doc :: proc(
 				fg = t.muted
 			}
 			start_x := x
-			for ch in seg.text {
+			for raw in seg.text {
+				ch := raw
 				if x >= r.x + r.w {
 					break
 				}
+				w := ui.rune_cols(ch)
+				if w <= 0 {
+					if ch < 0x20 || ch == 0x7f || (ch >= 0x80 && ch <= 0x9f) {
+						w = 1
+						ch = ' '
+					} else {
+						continue
+					}
+				}
+				if x + w > r.x + r.w {
+					break
+				}
 				ui.buffer_put(buf, x, y, ch, fg, bg, us)
-				x += 1
+				for i in 1 ..< w {
+					ui.buffer_put(buf, x + i, y, ui.CELL_WIDE_CONT, fg, bg, us)
+				}
+				x += w
 			}
 			if hits != nil && x > start_x {
 				if is_link && seg.url != "" {

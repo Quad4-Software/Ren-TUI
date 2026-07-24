@@ -106,13 +106,13 @@ draw_status :: proc(buf: ^Buffer, r: Rect, left, right: string) {
 	if right == "" {
 		return
 	}
-	right_cols := status_right_cols(r.w, strings.rune_count(left_shown))
+	right_cols := status_right_cols(r.w, string_cols(left_shown))
 	if right_cols <= 0 {
 		return
 	}
 	right_shown := truncate_runes(right, right_cols)
-	rx := r.x + r.w - strings.rune_count(right_shown) - 1
-	if rx <= r.x + strings.rune_count(left_shown) {
+	rx := r.x + r.w - string_cols(right_shown) - 1
+	if rx <= r.x + string_cols(left_shown) {
 		return
 	}
 	buffer_text(buf, rx, r.y, right_shown, t.muted, t.status_bg)
@@ -334,29 +334,62 @@ draw_input :: proc(buf: ^Buffer, r: Rect, i: ^Input_State, label: string, focuse
 	}
 	buffer_fill_rect(buf, inner.x, inner.y, inner.w, 1, ' ', fg, bg)
 	val := input_value(i)
-	shown := val
-	if i.password {
-		shown = strings.repeat("*", len(val), context.temp_allocator)
-	}
 	visible := max(1, inner.w - 1)
-	scroll := 0
-	if i.cursor >= visible {
-		scroll = i.cursor - visible + 1
+	cursor_cols := 0
+	if i.password {
+		byte_i := 0
+		stars_n := 0
+		for r in val {
+			if byte_i < i.cursor {
+				cursor_cols += 1
+			}
+			stars_n += 1
+			byte_i += utf8.rune_size(r)
+		}
+		scroll_cols := 0
+		if cursor_cols >= visible {
+			scroll_cols = cursor_cols - visible + 1
+		}
+		shown_stars := strings.repeat("*", stars_n, context.temp_allocator)
+		shown := truncate_runes(shown_stars[min(scroll_cols, len(shown_stars)):], visible)
+		buffer_text(buf, inner.x, inner.y, shown, fg, bg)
+		if focused {
+			cx := inner.x + clamp(cursor_cols - scroll_cols, 0, visible - 1)
+			buffer_put(buf, cx, inner.y, caps_cursor_glyph(), t.accent, bg)
+		}
+		return
 	}
-	if scroll > len(shown) {
-		scroll = len(shown)
+	cur := clamp(i.cursor, 0, len(val))
+	cursor_cols = string_cols(val[:cur])
+	scroll_cols := 0
+	if cursor_cols >= visible {
+		scroll_cols = cursor_cols - visible + 1
 	}
-	if scroll > 0 {
-		shown = shown[scroll:]
-	}
-	if len(shown) > visible {
-		shown = shown[:visible]
-	}
+	start := cols_to_byte_index(val, scroll_cols)
+	shown := truncate_runes(val[start:], visible)
 	buffer_text(buf, inner.x, inner.y, shown, fg, bg)
 	if focused {
-		cx := inner.x + clamp(i.cursor - scroll, 0, visible - 1)
+		cx := inner.x + clamp(cursor_cols - scroll_cols, 0, visible - 1)
 		buffer_put(buf, cx, inner.y, caps_cursor_glyph(), t.accent, bg)
 	}
+}
+
+cols_to_byte_index :: proc(s: string, cols: int) -> int {
+	if cols <= 0 {
+		return 0
+	}
+	n := 0
+	for r, i in s {
+		w := rune_cols(r)
+		if w <= 0 {
+			continue
+		}
+		if n + w > cols {
+			return i
+		}
+		n += w
+	}
+	return len(s)
 }
 
 draw_text_block :: proc(buf: ^Buffer, r: Rect, lines: []string, scroll: int) {

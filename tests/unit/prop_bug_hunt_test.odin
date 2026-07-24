@@ -99,6 +99,7 @@ test_bug_failover_encrypt_fail_restores_failed_state :: proc(t: ^testing.T) {
 	testing.expect(t, !s.send.ok)
 	testing.expect(t, !net.session_send_busy(&s))
 	testing.expect(t, len(s.send.wire) == 0, "failed failover must not leave a partial wire")
+	testing.expect(t, !s.send.failed_over, "failed_over must clear when propagate prepare fails")
 	testing.expect_value(t, s.send.method, lxmf.Method.Opportunistic)
 	net.session_send_cancel(&s)
 }

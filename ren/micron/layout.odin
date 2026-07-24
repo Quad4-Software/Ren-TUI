@@ -86,7 +86,7 @@ layout_first_row_for_field :: proc(doc: Doc, width: int, field_focus: int) -> in
 layout_row_width :: proc(row: Layout_Row) -> int {
 	n := row.indent
 	for seg in row.segs {
-		n += strings.rune_count(seg.text)
+		n += string_cols(seg.text)
 	}
 	return n
 }
@@ -167,7 +167,7 @@ layout_wrap_line :: proc(
 			r0, _ := utf8.decode_rune_in_string(text)
 			if r0 == ' ' || r0 == '\t' {
 				ws, ws_bytes := next_spaces(text)
-				ws_cols := strings.rune_count(ws)
+				ws_cols := string_cols(ws)
 				if ws_cols > remain {
 					commit(rows, &row, line_i, indent, allocator)
 					col = 0
@@ -189,7 +189,7 @@ layout_wrap_line :: proc(
 			}
 
 			word, word_bytes, rest := next_word(text)
-			word_cols := strings.rune_count(word)
+			word_cols := string_cols(word)
 			if word_cols <= remain {
 				append(&row.segs, Layout_Seg{
 					text = text[:word_bytes],
@@ -211,7 +211,7 @@ layout_wrap_line :: proc(
 				continue
 			}
 
-			piece := take_runes(word, remain)
+			piece := take_cols(word, remain)
 			piece_bytes := len(piece)
 			append(&row.segs, Layout_Seg{
 				text = text[:piece_bytes],
@@ -286,17 +286,3 @@ next_spaces :: proc(s: string) -> (spaces: string, bytes: int) {
 	return s[:i], i
 }
 
-@(private)
-take_runes :: proc(s: string, n: int) -> string {
-	if n <= 0 || len(s) == 0 {
-		return ""
-	}
-	i := 0
-	count := 0
-	for i < len(s) && count < n {
-		_, size := utf8.decode_rune_in_string(s[i:])
-		i += size
-		count += 1
-	}
-	return s[:i]
-}
