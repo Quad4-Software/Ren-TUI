@@ -211,6 +211,10 @@ package-nix:
 test-interop:
 	python3 tests/interop/python_lxmf_interop.py
 	python3 tests/interop/python_nomad_page_interop.py
+	python3 tests/interop/python_lxmf_delivery_proof_interop.py
+
+test-interop-live: $(LISTEN)
+	REN_LIVE_PROOF=1 python3 tests/interop/python_lxmf_delivery_proof_interop.py
 
 test-live: $(LISTEN)
 	./$(LISTEN) -t $(LIVE_SECS) $${REN_RNS_CONFIG:+-c $$REN_RNS_CONFIG}
