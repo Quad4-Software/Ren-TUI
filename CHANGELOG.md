@@ -2,7 +2,7 @@
 
 New work goes under the [draft] section only. Do not edit [released] sections after a tag ships.
 
-## 0.2.0 - 2026-07-24 [draft]
+## 0.2.0 - 2026-07-24 [released]
 
 - Fix NomadNet links with request vars (hash:/page/x with a=1 and b=2) so var_* reaches the node
 - Keep last page request vars for URL bar and identify reload
