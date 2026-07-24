@@ -1,10 +1,10 @@
 # Changelog
 
-New work goes under the `[draft]` section only. Do not edit `[released]` sections after a tag ships.
+New work goes under the [draft] section only. Do not edit [released] sections after a tag ships.
 
-## 0.2.0 - 2026-07-19 [draft]
+## 0.2.0 - 2026-07-24 [draft]
 
-- Fix NomadNet links with backtick request vars (hash:/page/x`a=1|b=2) so var_* reaches the node
+- Fix NomadNet links with request vars (hash:/page/x with a=1 and b=2) so var_* reaches the node
 - Keep last page request vars for URL bar and identify reload
 - Alpine musl CI rebuilds librns.a from Reticulum-Go so new ABI symbols (destination_encrypt, packet_send) link
 - Fix Conversations open/chat: filtered list indexing, unread clear, reply in-tab, Network LXMF opens conversation
@@ -21,6 +21,18 @@ New work goes under the `[draft]` section only. Do not edit `[released]` section
 - librns PacketSend and DestinationEncrypt for opportunistic and propagate delivery
 - Expand prop coverage across unit smoke property acceptance e2e chaos mutation oracle and blackbox suites
 - Fix prop bugs found by failing tests: case-insensitive send method and NONE, clear stale prop node on bad hex, reject empty propagate ciphertext, do not commit failover wire until encrypt succeeds, ignore sync Request_Response before /get id
+- Fix input caret and horizontal scroll treating UTF-8 byte offsets as display columns
+- Fix micron layout wrap and page paint using rune count instead of East Asian or emoji columns
+- Fix page form field width truncating by bytes (could split multi-byte runes)
+- Fix status bar right placement using rune count instead of display columns
+- Fix Page tab keeping Network announce toast hold text until the hold expired
+- Fix send failover leaving failed_over set when propagate prepare fails
+- Reject LXMF unpack when payload has trailing garbage bytes
+- Free previous field value when duplicate msgpack map keys overwrite on unpack
+- Refuse conversation load when on-disk peer hash does not match the folder name
+- Verify inbound LXMF signatures when a signing key is known (local delivery or peer sign_pub cache) and reject bad signatures
+- Persist optional peer sign_pub in peers.msgpack for inbound verify
+- Add exploratory oracles covering column math, status hold, unpack strictness, peer hash binding, and signature accept policy
 
 ## 0.1.2 - 2026-07-19 [released]
 
