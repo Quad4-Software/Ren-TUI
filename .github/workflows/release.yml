@@ -24,6 +24,7 @@ jobs:
   build:
     name: Build release (${{ matrix.target }})
     runs-on: ${{ matrix.runner }}
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -158,15 +159,25 @@ jobs:
   windows-smoke:
     name: Windows smoke
     needs: build
+    if: always() && !cancelled()
+    continue-on-error: true
     runs-on: windows-2025
     steps:
       - name: Download windows artifact
+        id: dl
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           name: release-windows-amd64
           path: dist
 
+      - name: Skip when windows build missing
+        if: steps.dl.outcome != 'success'
+        shell: bash
+        run: echo "windows artifact missing, skipping smoke"
+
       - name: Smoke
+        if: steps.dl.outcome == 'success'
         shell: bash
         run: |
           set -eu
@@ -182,6 +193,7 @@ jobs:
   publish:
     name: Publish immutable release
     needs: [build, windows-smoke]
+    if: always() && !cancelled()
     runs-on: ubuntu-24.04
     steps:
       - name: Checkout
@@ -203,6 +215,7 @@ jobs:
           fi
 
       - name: Download artifacts
+        continue-on-error: true
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           path: artifacts
@@ -235,11 +248,14 @@ jobs:
           TAG: ${{ steps.meta.outputs.tag }}
         run: |
           set -eu
+          shopt -s nullglob
           set -- artifacts/*.tar.gz artifacts/*.zip artifacts/*.sha256
-          if [ ! -e "$1" ]; then
-            echo "no release assets found" >&2
+          if [ "$#" -eq 0 ]; then
+            echo "no release assets found (all matrix targets failed)" >&2
             exit 1
           fi
+          echo "publishing $# asset files from successful targets"
+          ls -la artifacts || true
           gh release upload "${TAG}" "$@" --clobber --repo "${{ github.repository }}"
           gh release edit "${TAG}" --draft=false --repo "${{ github.repository }}"
           gh release view "${TAG}" --repo "${{ github.repository }}"

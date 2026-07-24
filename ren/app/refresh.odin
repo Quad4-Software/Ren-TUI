@@ -8,7 +8,9 @@ Rebuilds list widgets from live app state.
 package app
 
 import "core:fmt"
+import "core:slice"
 import "core:strings"
+import "core:time"
 
 import "ren:constants"
 import "ren:lxmf"
@@ -22,6 +24,53 @@ refresh_lists :: proc(a: ^App) {
 	refresh_iface_cache(a)
 	refresh_config_list(a)
 	a.ui_dirty = true
+}
+
+conv_last_activity :: proc(conv: store.Conversation) -> f64 {
+	if len(conv.messages) == 0 {
+		return 0
+	}
+	return conv.messages[len(conv.messages) - 1].timestamp
+}
+
+relative_time_ago :: proc(ts: f64, allocator := context.temp_allocator) -> string {
+	if ts <= 0 {
+		return ""
+	}
+	now := f64(time.time_to_unix_nano(time.now())) / 1e9
+	delta := now - ts
+	if delta < 0 || delta < 60 {
+		return strings.clone("just now", allocator)
+	}
+	if delta < 3600 {
+		return fmt.aprintf("%dm ago", int(delta / 60), allocator = allocator)
+	}
+	if delta < 86400 {
+		return fmt.aprintf("%dh ago", int(delta / 3600), allocator = allocator)
+	}
+	if delta < 172800 {
+		return strings.clone("yesterday", allocator)
+	}
+	if delta < 604800 {
+		return fmt.aprintf("%dd ago", int(delta / 86400), allocator = allocator)
+	}
+	if delta < 2592000 {
+		return fmt.aprintf("%dw ago", int(delta / 604800), allocator = allocator)
+	}
+	t := time.unix(i64(ts), 0)
+	y, m, d := time.date(t)
+	return fmt.aprintf("%04d-%02d-%02d", y, int(m), d, allocator = allocator)
+}
+
+conv_scroll_to_latest :: proc(a: ^App) {
+	idx := conv_selected_store_idx(a)
+	if idx < 0 {
+		a.msg_scroll = 0
+		return
+	}
+	n := len(a.conversations.items[idx].messages)
+	visible := max(1, a.detail_rect.h / 3)
+	a.msg_scroll = max(0, n - visible)
 }
 
 refresh_conv_list :: proc(a: ^App) {
@@ -39,7 +88,25 @@ refresh_conv_list :: proc(a: ^App) {
 	ui.list_clear(&a.conv_list)
 	clear(&a.conv_peer_idx)
 	q := strings.to_lower(strings.trim_space(ui.input_value(&a.conv_search)), context.temp_allocator)
-	for conv, i in a.conversations.items {
+
+	Sort_Row :: struct {
+		idx: int,
+		ts:  f64,
+	}
+	rows := make([]Sort_Row, len(a.conversations.items), context.temp_allocator)
+	for i in 0 ..< len(a.conversations.items) {
+		rows[i] = Sort_Row{idx = i, ts = conv_last_activity(a.conversations.items[i])}
+	}
+	slice.sort_by(rows, proc(a, b: Sort_Row) -> bool {
+		if a.ts != b.ts {
+			return a.ts > b.ts
+		}
+		return a.idx < b.idx
+	})
+
+	for row in rows {
+		i := row.idx
+		conv := a.conversations.items[i]
 		label := store.conversation_label(&a.directory, conv)
 		hex := store.hash_hex(conv.peer_hash, context.temp_allocator)
 		if q != "" {
@@ -49,11 +116,24 @@ refresh_conv_list :: proc(a: ^App) {
 				continue
 			}
 		}
-		unread := ""
+		mark := " "
 		if conv.unread > 0 {
-			unread = fmt.tprintf(" (%d)", conv.unread)
+			mark = "*"
 		}
-		ui.list_push(&a.conv_list, fmt.tprintf("%s%s", label, unread))
+		ago := relative_time_ago(row.ts, context.temp_allocator)
+		line: string
+		if ago != "" {
+			if conv.unread > 0 {
+				line = fmt.tprintf("%s %s (%d)  %s", mark, label, conv.unread, ago)
+			} else {
+				line = fmt.tprintf("%s %s  %s", mark, label, ago)
+			}
+		} else if conv.unread > 0 {
+			line = fmt.tprintf("%s %s (%d)", mark, label, conv.unread)
+		} else {
+			line = fmt.tprintf("%s %s", mark, label)
+		}
+		ui.list_push(&a.conv_list, line)
 		append(&a.conv_peer_idx, i)
 		delete(label)
 	}

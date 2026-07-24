@@ -179,8 +179,7 @@ select_conversation :: proc(a: ^App, peer: [store.HASH_LEN]u8) {
 	a.conv_list.selected = list_row
 	visible := max(1, a.list_rect.h)
 	ui.list_ensure_visible(&a.conv_list, visible)
-	conv := a.conversations.items[store_idx]
-	a.msg_scroll = max(0, len(conv.messages) - max(1, a.detail_rect.h / 3))
+	conv_scroll_to_latest(a)
 	if store.conversations_clear_unread(&a.conversations, peer) {
 		_ = store.conversations_save_peer(&a.conversations, &a.cfg, peer)
 		refresh_conv_list(a)

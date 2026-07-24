@@ -202,7 +202,7 @@ footer_keybinds :: proc(a: ^App) -> string {
 		}
 		return "g URL  Esc Network"
 	case .Conversations:
-		return "r rename  Enter reply  / search  Up/Dn list  PgUp/Dn msgs"
+		return "r rename  Enter reply  / search  u sync  Up/Dn list  PgUp/Dn msgs"
 	case .Network:
 		return "l/n/p views  / search  Enter set/open  u sync"
 	case .Interfaces:

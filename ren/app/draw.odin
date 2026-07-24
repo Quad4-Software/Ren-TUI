@@ -56,9 +56,9 @@ GUIDE_LINES := [?]string{
 	"Dangerous schemes blocked. External http shown only.",
 	"",
 	"Conversations",
-	"r         rename contact   Enter reply   / search",
-	"Up/Down list   PgUp/PgDn messages",
-	"Names: custom > announce > hash",
+	"r         rename contact   Enter reply   / search   u sync",
+	"Up/Down list (opens latest)   click select   PgUp/PgDn messages",
+	"Names: custom > announce > hash   sorted by last activity",
 	"",
 	"Config ~/.config/ren-tui/config",
 	"obfuscate_hops = yes writes RNS local_hops_delta (off by default)",
@@ -121,25 +121,42 @@ draw_app :: proc(buf: ^ui.Buffer, user: rawptr) {
 draw_conversations :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	ui.draw_box(buf, r, "conversations", true)
 	inner := ui.rect_inset(r, 1)
-	left, right := ui.rect_split_vertical(inner, min(28, inner.w / 3))
+	list_w := min(max(32, inner.w / 3), max(24, min(48, inner.w / 2)))
+	left, right := ui.rect_split_vertical(inner, list_w)
 	a.list_rect = left
+	search_h := 2 if a.conv_searching || strings.trim_space(ui.input_value(&a.conv_search)) != "" else 0
 	reply_h := 3 if a.conv_replying || a.conv_renaming else 0
 	msg_area := right
-	if reply_h > 0 && right.h > reply_h + 1 {
-		msg_area.h = right.h - reply_h
+	top_pad := 0
+	if search_h > 0 && right.h > search_h + reply_h + 2 {
+		top_pad = search_h
+		msg_area.y = right.y + top_pad
+		msg_area.h = right.h - top_pad
+	}
+	if reply_h > 0 && msg_area.h > reply_h + 1 {
+		msg_area.h -= reply_h
 	}
 	a.detail_rect = msg_area
 	ui.draw_list(buf, left, &a.conv_list)
 
 	t := ui.theme()
 	ui.buffer_fill_rect(buf, right.x, right.y, right.w, right.h, ' ', t.fg, t.bg)
+	if search_h > 0 {
+		q := strings.trim_space(ui.input_value(&a.conv_search))
+		hint := q if q != "" else "..."
+		ui.buffer_text(buf, right.x + 1, right.y, truncate(fmt.tprintf("filter: %s", hint), right.w - 2), t.highlight_fg, t.bg)
+		sync_line := net.session_sync_status_line(&a.session, &a.cfg, context.temp_allocator)
+		if sync_line != "" {
+			ui.buffer_text(buf, right.x + 1, right.y + 1, truncate(fmt.tprintf("sync: %s", sync_line), right.w - 2), t.muted, t.bg)
+		}
+	}
 	if len(a.conversations.items) == 0 {
-		ui.buffer_text(buf, right.x + 1, right.y, "No conversations yet", t.muted, t.bg)
+		ui.buffer_text(buf, right.x + 1, msg_area.y, "No conversations yet", t.muted, t.bg)
 		return
 	}
 	idx := conv_selected_store_idx(a)
 	if idx < 0 {
-		ui.buffer_text(buf, right.x + 1, right.y, "Select a conversation", t.muted, t.bg)
+		ui.buffer_text(buf, right.x + 1, msg_area.y, "Select a conversation", t.muted, t.bg)
 		return
 	}
 	conv := a.conversations.items[idx]
@@ -154,9 +171,16 @@ draw_conversations :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		}
 		msg := conv.messages[i]
 		out := msg.direction == .Out
-		who := "you" if out else "them"
+		arrow := "->" if out else "<-"
 		sig := "ok" if msg.verified else "?"
-		meta := fmt.tprintf("%s  %s  %s", who, sig, store.format_peer_hops(msg.hops, msg.hops > 0))
+		ago := relative_time_ago(msg.timestamp, context.temp_allocator)
+		hops := store.format_peer_hops(msg.hops, msg.hops > 0)
+		meta: string
+		if ago != "" {
+			meta = fmt.tprintf("%s %s  %s  %s", sig, arrow, ago, hops)
+		} else {
+			meta = fmt.tprintf("%s %s  %s", sig, arrow, hops)
+		}
 		body := msg.content
 		if msg.title != "" {
 			body = fmt.tprintf("[%s] %s", msg.title, msg.content)
