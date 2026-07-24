@@ -520,6 +520,9 @@ handle_session_events :: proc(a: ^App) {
 			mark_dirty(a)
 		case .Send_Ok:
 			set_status(a, ev.detail if ev.detail != "" else "sent", STATUS_HOLD)
+			ui.input_clear(&a.conv_reply)
+			ui.input_clear(&a.compose_body)
+			a.conv_replying = false
 			refresh_conv_list(a)
 			conv_scroll_to_latest(a)
 			mark_dirty(a)
@@ -529,6 +532,10 @@ handle_session_events :: proc(a: ^App) {
 					page_set_error(a, ev.detail)
 				}
 				set_status(a, ev.detail, STATUS_HOLD)
+				if ev.kind == .Send_Failed {
+					refresh_conv_list(a)
+					conv_scroll_to_latest(a)
+				}
 				mark_dirty(a)
 			}
 		case .Announce, .None:

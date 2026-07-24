@@ -102,7 +102,6 @@ try_send :: proc(a: ^App) {
 		return
 	}
 	if net.session_send_begin(&a.session, hash_bytes, "", body, &a.conversations, &a.directory, &a.cfg, method) {
-		ui.input_clear(&a.compose_body)
 		set_status(a, fmt.tprintf("sending (%s)...", lxmf.method_label(method)), STATUS_HOLD)
 		mark_dirty(a)
 	} else {
@@ -246,7 +245,7 @@ try_conv_reply :: proc(a: ^App) {
 		return
 	}
 	if net.session_send_begin(&a.session, peer, "", body, &a.conversations, &a.directory, &a.cfg, method) {
-		ui.input_clear(&a.conv_reply)
+		// Keep reply text until Send_Ok so a path/link failure does not wipe it.
 		set_status(a, fmt.tprintf("sending (%s)...", lxmf.method_label(method)), STATUS_HOLD)
 		mark_dirty(a)
 	} else {

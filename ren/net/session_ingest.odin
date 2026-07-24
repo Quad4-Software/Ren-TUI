@@ -80,12 +80,16 @@ session_handle_event :: proc(
 			directory.heard_other += 1
 		}
 	case .Link_Data:
-		session_ingest_lxmf(s, rns.event_app_data(ev), .Direct, directory, conversations, cfg)
+		session_ingest_link_payload(s, ev, directory, conversations, cfg)
 	case .Destination_Data:
 		// Opportunistic LXMF. Ignore non-delivery destinations (e.g. nomad node).
 		dest := rns.event_destination_hash(ev)
 		if len(dest) == store.HASH_LEN &&
 		   !lxmf.destination_hash_matches(s.router.delivery_hash, dest) {
+			return
+		}
+		if ev.app_data_truncated != 0 {
+			session_event_push(s, .Error, "lxmf data truncated")
 			return
 		}
 		plain := rns.event_app_data(ev)
@@ -99,11 +103,39 @@ session_handle_event :: proc(
 		}
 		session_store_inbound(s, &msg, directory, conversations, cfg)
 	case .Resource_Concluded:
-		session_ingest_lxmf(s, rns.event_app_data(ev), .Direct, directory, conversations, cfg)
+		session_ingest_link_payload(s, ev, directory, conversations, cfg)
 	case .Link_Established, .Link_Failed, .Link_Closed,
 	     .Request_Incoming, .Request_Response, .Request_Failed,
 	     .Resource_Started, .None:
 	}
+}
+
+@(private)
+session_ingest_link_payload :: proc(
+	s: ^Session,
+	ev: ^rns.Event,
+	directory: ^store.Directory,
+	conversations: ^store.Conversations,
+	cfg: ^store.Config = nil,
+) {
+	if ev.app_data_truncated != 0 {
+		session_event_push(s, .Error, "lxmf data truncated")
+		return
+	}
+	data := rns.event_app_data(ev)
+	if len(data) == 0 {
+		return
+	}
+	msg, ok := lxmf.message_unpack(data, .Direct)
+	if !ok {
+		// Some peers deliver opportunistic-shaped payloads on a link.
+		msg, ok = lxmf.message_unpack_opportunistic(s.router.delivery_hash, data)
+	}
+	if !ok {
+		session_event_push(s, .Error, fmt.tprintf("lxmf unpack failed (%d bytes)", len(data)))
+		return
+	}
+	session_store_inbound(s, &msg, directory, conversations, cfg)
 }
 
 @(private)

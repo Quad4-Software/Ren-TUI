@@ -50,6 +50,9 @@ Send_Job :: struct {
 	deadline:        time.Tick,
 	phase_deadline:  time.Tick,
 	path_retried:    bool,
+	path_refreshed:  bool,
+	persisted_out:   bool,
+	retry_at:        time.Tick,
 	status:          string,
 	conversations:   ^store.Conversations,
 	directory:       ^store.Directory,
@@ -130,6 +133,8 @@ send_try_failover :: proc(s: ^Session, reason: string) -> bool {
 	send_set_status(s, fmt.tprintf("failover to propagate (%s)", reason))
 	s.send.deadline = time.tick_add(time.tick_now(), time.Duration(constants.LINK_TIMEOUT_SEC * 2) * time.Second)
 	s.send.phase = .Finding_Path
+	s.send.path_refreshed = false
+	s.send.retry_at = time.tick_now()
 	s.send.phase_deadline = time.tick_add(
 		time.tick_now(),
 		time.Duration(constants.PATH_FIND_TIMEOUT_SEC) * time.Second,
@@ -321,11 +326,17 @@ session_send_begin :: proc(
 		return false
 	}
 
+	// Keep the outbound text in the conversation even if path/link fails later.
+	send_persist_out(s)
+	s.send.persisted_out = true
+
 	if use_method == .Opportunistic {
 		s.send.phase = .Packet_Send
 		send_set_status(s, "sending opportunistic...")
 	} else {
 		s.send.phase = .Finding_Path
+		s.send.path_refreshed = false
+		s.send.retry_at = time.tick_now()
 		s.send.phase_deadline = time.tick_add(
 			time.tick_now(),
 			time.Duration(constants.PATH_FIND_TIMEOUT_SEC) * time.Second,
@@ -417,7 +428,10 @@ send_persist_out :: proc(s: ^Session) {
 
 @(private)
 send_complete_ok :: proc(s: ^Session) {
-	send_persist_out(s)
+	if !s.send.persisted_out {
+		send_persist_out(s)
+		s.send.persisted_out = true
+	}
 	session_event_push(s, .Send_Ok)
 	if s.started && s.delivery_dest != 0 {
 		session_announce(s)
@@ -426,10 +440,9 @@ send_complete_ok :: proc(s: ^Session) {
 	s.send.done = true
 	s.send.active = false
 	s.send.phase = .Idle
-	if s.send.link != 0 {
-		send_link_close(s, s.send.link)
-		s.send.link = 0
-	}
+	// Keep the delivery link open for backchannel replies (NomadNet keeps
+	// LXMF links for LINK_MAX_INACTIVITY). Closing here dropped inbound
+	// replies that arrived on the same link.
 }
 
 session_send_on_event :: proc(s: ^Session, ev: ^rns.Event) -> bool {
@@ -473,6 +486,29 @@ session_send_on_event :: proc(s: ^Session, ev: ^rns.Event) -> bool {
 		}
 		path_hot_invalidate(&s.paths, s.send.link_target)
 		err := rns.event_error_message(ev)
+		// Unknown identity means announce/path not ready yet. Keep requesting
+		// path instead of deleting the outbound and giving up immediately.
+		if !s.send.path_retried || strings.contains(err, "unknown destination") || strings.contains(err, "not found") {
+			s.send.path_retried = true
+			if s.send.link != 0 {
+				send_link_close(s, s.send.link)
+				s.send.link = 0
+			}
+			s.send.has_link_id = false
+			s.send.path_refreshed = false
+			s.send.phase = .Finding_Path
+			s.send.retry_at = time.tick_now()
+			s.send.phase_deadline = time.tick_add(
+				time.tick_now(),
+				time.Duration(constants.PATH_FIND_TIMEOUT_SEC) * time.Second,
+			)
+			if s.send_transport.path_ensure == nil {
+				path_request_refresh(s, s.send.link_target)
+			}
+			reason := err if err != "" else "link failed"
+			send_set_status(s, fmt.tprintf("waiting for path (%s)...", reason))
+			return true
+		}
 		if err != "" {
 			send_fail(s, fmt.tprintf("link failed %s", err))
 		} else {
@@ -510,16 +546,51 @@ session_send_tick :: proc(s: ^Session) {
 		}
 		send_complete_ok(s)
 	case .Finding_Path:
-		_ = send_path_ensure(s, s.send.link_target)
-		s.send.phase = .Opening_Link
-		send_set_status(s, "opening link...")
+		ready := send_path_ensure(s, s.send.link_target)
+		if ready {
+			s.send.phase = .Opening_Link
+			send_set_status(s, "opening link...")
+			session_send_tick(s)
+			return
+		}
+		if time.tick_diff(now, s.send.phase_deadline) <= 0 {
+			send_fail(s, "path not found")
+			return
+		}
+		if time.tick_diff(now, s.send.retry_at) <= 0 {
+			if s.send_transport.path_ensure == nil {
+				if !s.send.path_refreshed {
+					path_request_refresh(s, s.send.link_target)
+					s.send.path_refreshed = true
+					send_set_status(s, "requesting path...")
+				} else {
+					dh := s.send.link_target
+					_ = rns.path_request(s.node, dh[:])
+					send_set_status(s, "waiting for path...")
+				}
+			} else {
+				s.send.path_refreshed = true
+				send_set_status(s, "waiting for path...")
+			}
+			s.send.retry_at = time.tick_add(now, time.Duration(constants.PATH_RETRY_SEC) * time.Second)
+		}
 	case .Opening_Link:
 		link, lid, ok := send_link_open(s, s.send.link_target[:])
 		if !ok {
+			path_hot_invalidate(&s.paths, s.send.link_target)
 			if !s.send.path_retried {
 				s.send.path_retried = true
-				_ = send_path_ensure(s, s.send.link_target)
-				send_set_status(s, "retrying link...")
+				s.send.path_refreshed = false
+				s.send.phase = .Finding_Path
+				s.send.retry_at = time.tick_now()
+				s.send.phase_deadline = time.tick_add(
+					now,
+					time.Duration(constants.PATH_FIND_TIMEOUT_SEC) * time.Second,
+				)
+				if s.send_transport.path_ensure == nil {
+					path_request_refresh(s, s.send.link_target)
+				}
+				send_set_status(s, "link open failed, requesting path...")
 				return
 			}
 			send_fail(s, "link open failed")
@@ -548,9 +619,18 @@ session_send_tick :: proc(s: ^Session) {
 					send_link_close(s, s.send.link)
 					s.send.link = 0
 				}
-				_ = send_path_ensure(s, s.send.link_target)
-				s.send.phase = .Opening_Link
-				send_set_status(s, "retrying link...")
+				s.send.has_link_id = false
+				s.send.path_refreshed = false
+				s.send.phase = .Finding_Path
+				s.send.retry_at = time.tick_now()
+				s.send.phase_deadline = time.tick_add(
+					now,
+					time.Duration(constants.PATH_FIND_TIMEOUT_SEC) * time.Second,
+				)
+				if s.send_transport.path_ensure == nil {
+					path_request_refresh(s, s.send.link_target)
+				}
+				send_set_status(s, "link timeout, re-finding path...")
 				return
 			}
 			send_fail(s, "link timeout")
