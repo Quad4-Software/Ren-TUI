@@ -127,6 +127,21 @@ session_ingest_lxmf :: proc(
 }
 
 @(private)
+session_resolve_sign_pub :: proc(
+	s: ^Session,
+	directory: ^store.Directory,
+	source: [store.HASH_LEN]u8,
+) -> []u8 {
+	if source == s.router.delivery_hash {
+		return s.router.material.sign_pub[:]
+	}
+	if pub, ok := store.directory_sign_pub(directory, source); ok {
+		return pub
+	}
+	return nil
+}
+
+@(private)
 session_store_inbound :: proc(
 	s: ^Session,
 	msg: ^lxmf.Message,
@@ -137,6 +152,11 @@ session_store_inbound :: proc(
 	defer lxmf.message_destroy(msg)
 	if !lxmf.router_validate_inbound_stamp(&s.router, msg) {
 		session_event_push(s, .Error, "stamp rejected")
+		return
+	}
+	sign_pub := session_resolve_sign_pub(s, directory, msg.source_hash)
+	if !lxmf.message_accept_inbound_signature(msg, sign_pub) {
+		session_event_push(s, .Error, "signature rejected")
 		return
 	}
 	label := store.directory_label(directory, msg.source_hash)

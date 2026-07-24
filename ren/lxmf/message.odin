@@ -232,6 +232,10 @@ message_unpack :: proc(data: []u8, method: Method = .Direct) -> (Message, bool) 
 				continue
 			}
 			cloned := clone_value(e.value)
+			if old, exists := m.fields[key]; exists {
+				old_v := old
+				value_destroy(&old_v)
+			}
 			m.fields[key] = cloned
 		}
 	}
@@ -241,6 +245,11 @@ message_unpack :: proc(data: []u8, method: Method = .Direct) -> (Message, bool) 
 		if s_ok && stamp_b != nil {
 			m.stamp = bytes.clone(stamp_b)
 		}
+	}
+
+	if r.pos != len(packed_payload) {
+		message_destroy(&m)
+		return {}, false
 	}
 
 	payload_core := pack_payload_from_parts(m.timestamp, m.title, m.content, m.fields)
@@ -256,6 +265,14 @@ message_unpack :: proc(data: []u8, method: Method = .Direct) -> (Message, bool) 
 	m.signature_ok = false
 
 	return m, true
+}
+
+// Allow store when no key is known. Reject only when sign_pub is present and verify fails.
+message_accept_inbound_signature :: proc(m: ^Message, sign_pub: []u8) -> bool {
+	if len(sign_pub) == 0 {
+		return true
+	}
+	return message_verify(m, sign_pub)
 }
 
 message_verify :: proc(m: ^Message, sign_pub: []u8) -> bool {

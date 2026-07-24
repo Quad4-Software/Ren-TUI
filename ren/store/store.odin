@@ -35,6 +35,8 @@ Peer :: struct {
 	kind:          Peer_Kind,
 	hops:          u8,
 	hops_known:    bool,
+	sign_pub:      [32]u8,
+	has_sign_pub:  bool,
 }
 
 Conversation :: struct {
@@ -664,6 +666,29 @@ directory_stamp_cost :: proc(d: ^Directory, dest: [HASH_LEN]u8) -> int {
 		}
 	}
 	return 0
+}
+
+directory_set_sign_pub :: proc(d: ^Directory, dest: [HASH_LEN]u8, sign_pub: []u8) -> bool {
+	if len(sign_pub) != 32 {
+		return false
+	}
+	for &p in d.peers {
+		if p.hash == dest {
+			copy(p.sign_pub[:], sign_pub)
+			p.has_sign_pub = true
+			return true
+		}
+	}
+	return false
+}
+
+directory_sign_pub :: proc(d: ^Directory, dest: [HASH_LEN]u8) -> ([]u8, bool) {
+	for &p in d.peers {
+		if p.hash == dest && p.has_sign_pub {
+			return p.sign_pub[:], true
+		}
+	}
+	return nil, false
 }
 
 directory_hops :: proc(d: ^Directory, dest: [HASH_LEN]u8) -> u8 {
