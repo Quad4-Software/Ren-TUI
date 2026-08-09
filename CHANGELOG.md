@@ -2,7 +2,7 @@
 
 New work goes under the [draft] section only. Do not edit [released] sections after a tag ships.
 
-## 0.2.1 - 2026-07-24 [draft]
+## 0.2.1 - 2026-08-09 [draft]
 
 - Fix LXMF delivery proofs stuck at 50 percent on NomadNet/Python: responder links sign proofs with the destination identity key (not ephemeral Ed25519)
 - librns Link.Validate uses peer_sig_pub like Python so receipts can reach DELIVERED
@@ -19,6 +19,8 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 - Keep LXMF delivery links open after send for backchannel replies
 - Prove opportunistic packets only after successful decrypt and delivery
 - Wire inbound link DATA callbacks synchronously so the first packet is not lost
+- Compute LXMF stamps on the send job tick with an 8ms budget so peer stamp_cost no longer freezes the TUI
+- Redraw while send is busy so stamp and path status stay visible
 
 ## 0.2.0 - 2026-07-24 [released]
 
