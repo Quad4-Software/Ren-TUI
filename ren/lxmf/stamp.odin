@@ -11,6 +11,7 @@ import "core:bytes"
 import "core:crypto"
 import "core:crypto/hkdf"
 import "core:mem"
+import "core:time"
 
 STAMP_SIZE :: 32
 TICKET_LENGTH :: 16
@@ -20,22 +21,107 @@ WORKBLOCK_EXPAND_ROUNDS :: 3000
 WORKBLOCK_EXPAND_ROUNDS_PN :: 1000
 WORKBLOCK_CHUNK :: 256
 
+// Keep stamp ticks short so the TUI poll loop stays interactive.
+STAMP_TICK_BUDGET :: 8 * time.Millisecond
+
+Stamp_Gen :: struct {
+	active:        bool,
+	done:          bool,
+	ok:            bool,
+	cost:          int,
+	expand_rounds: int,
+	rounds_done:   int,
+	attempts:      int,
+	message_id:    [MESSAGE_ID_LEN]u8,
+	workblock:     []u8,
+	stamp:         []u8,
+}
+
+stamp_workblock_round :: proc(material: []u8, n: int, out_chunk: []u8) {
+	nw: Writer
+	writer_init(&nw, context.temp_allocator)
+	write_int(&nw, i64(n))
+	packed_n := writer_bytes(&nw)
+	salt_src := make([]u8, len(material) + len(packed_n), context.temp_allocator)
+	copy(salt_src, material)
+	copy(salt_src[len(material):], packed_n)
+	salt := full_hash(salt_src)
+	hkdf.extract_and_expand(.SHA256, salt[:], material, nil, out_chunk)
+}
+
 stamp_workblock :: proc(material: []u8, expand_rounds: int = WORKBLOCK_EXPAND_ROUNDS, allocator := context.allocator) -> []u8 {
 	out := make([]u8, expand_rounds * WORKBLOCK_CHUNK, allocator)
 	chunk := make([]u8, WORKBLOCK_CHUNK, context.temp_allocator)
 	for n in 0 ..< expand_rounds {
-		nw: Writer
-		writer_init(&nw, context.temp_allocator)
-		write_int(&nw, i64(n))
-		packed_n := writer_bytes(&nw)
-		salt_src := make([]u8, len(material) + len(packed_n), context.temp_allocator)
-		copy(salt_src, material)
-		copy(salt_src[len(material):], packed_n)
-		salt := full_hash(salt_src)
-		hkdf.extract_and_expand(.SHA256, salt[:], material, nil, chunk)
+		stamp_workblock_round(material, n, chunk)
 		copy(out[n * WORKBLOCK_CHUNK:], chunk)
 	}
 	return out
+}
+
+stamp_gen_begin :: proc(
+	g: ^Stamp_Gen,
+	message_id: []u8,
+	cost: int,
+	expand_rounds: int = WORKBLOCK_EXPAND_ROUNDS,
+) -> bool {
+	stamp_gen_cancel(g)
+	if cost <= 0 || len(message_id) != MESSAGE_ID_LEN {
+		return false
+	}
+	g.active = true
+	g.done = false
+	g.ok = false
+	g.cost = cost
+	g.expand_rounds = expand_rounds if expand_rounds > 0 else WORKBLOCK_EXPAND_ROUNDS
+	g.rounds_done = 0
+	g.attempts = 0
+	copy(g.message_id[:], message_id)
+	g.workblock = make([]u8, g.expand_rounds * WORKBLOCK_CHUNK)
+	return true
+}
+
+stamp_gen_cancel :: proc(g: ^Stamp_Gen) {
+	delete(g.workblock)
+	delete(g.stamp)
+	g^ = {}
+}
+
+// Advance stamp work until done or budget elapses. Returns true when finished.
+stamp_gen_tick :: proc(g: ^Stamp_Gen, budget: time.Duration = STAMP_TICK_BUDGET) -> bool {
+	if g == nil || !g.active || g.done {
+		return g != nil && g.done
+	}
+	start := time.tick_now()
+	mid := g.message_id[:]
+
+	chunk := make([]u8, WORKBLOCK_CHUNK, context.temp_allocator)
+	for g.rounds_done < g.expand_rounds {
+		stamp_workblock_round(mid, g.rounds_done, chunk)
+		copy(g.workblock[g.rounds_done * WORKBLOCK_CHUNK:], chunk)
+		g.rounds_done += 1
+		if time.tick_since(start) >= budget {
+			return false
+		}
+	}
+
+	candidate := make([]u8, STAMP_SIZE, context.temp_allocator)
+	for {
+		crypto.rand_bytes(candidate)
+		g.attempts += 1
+		if stamp_valid(candidate, g.cost, g.workblock) {
+			delete(g.stamp)
+			g.stamp = make([]u8, STAMP_SIZE)
+			copy(g.stamp, candidate)
+			g.ok = true
+			g.done = true
+			g.active = false
+			return true
+		}
+		if time.tick_since(start) >= budget {
+			return false
+		}
+	}
 }
 
 stamp_value :: proc(workblock: []u8, stamp: []u8) -> int {

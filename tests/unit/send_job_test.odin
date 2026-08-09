@@ -197,3 +197,43 @@ test_send_job_link_open_failed :: proc(t: ^testing.T) {
 strings_has_send_failed :: proc(s: ^net.Session) -> bool {
 	return net.session_events_has(s, .Send_Failed)
 }
+
+@(test)
+test_send_job_stamp_phase_stays_async :: proc(t: ^testing.T) {
+	fake: Fake_Send
+	s: net.Session
+	testing.expect(t, setup_send_session(&s, &fake))
+	defer lxmf.router_destroy(&s.router)
+	defer net.session_event_ring_clear(&s.events)
+	defer delete(s.status)
+
+	dir: store.Directory
+	store.directory_init(&dir)
+	defer store.directory_destroy(&dir)
+	convs: store.Conversations
+	store.conversations_init(&convs)
+	defer store.conversations_destroy(&convs)
+
+	dest: [store.HASH_LEN]u8
+	dest[0] = 0xcd
+	store.directory_upsert(&dir, dest, dest, .Lxmf, "peer", 8, 0)
+
+	testing.expect(t, net.session_send_begin(&s, dest, "", "stamped hello", &convs, &dir, nil))
+	testing.expect(t, net.session_send_busy(&s))
+	testing.expect_value(t, s.send.phase, net.Send_Phase.Stamping)
+	testing.expect_value(t, len(convs.items[0].messages), 1)
+
+	// One begin must leave the job in Stamping rather than completing PoW inline.
+	testing.expect_value(t, s.send.phase, net.Send_Phase.Stamping)
+
+	for _ in 0 ..< 4000 {
+		if !net.session_send_busy(&s) {
+			break
+		}
+		net.session_send_tick(&s)
+	}
+	testing.expect(t, s.send.ok)
+	testing.expect(t, s.send.stamped)
+	testing.expect_value(t, fake.sent, 1)
+	net.session_send_cancel(&s)
+}

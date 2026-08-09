@@ -3,15 +3,18 @@
 
 /*
 Exploratory oracles: column math, form width, paint, status hold,
-unpack strictness, persist peer binding, inbound signature gate.
+unpack strictness, persist peer binding, inbound signature gate,
+stamp PoW must not block a UI frame.
 */
 
 package tests
 
+import "core:fmt"
 import "core:os"
 import "core:path/filepath"
 import "core:strings"
 import "core:testing"
+import "core:time"
 import "core:unicode/utf8"
 
 import "ren:app"
@@ -340,4 +343,50 @@ test_oracle_duplicate_field_keys_last_wins :: proc(t: ^testing.T) {
 	testing.expect(t, vok)
 	testing.expect_value(t, v.kind, lxmf.Value_Kind.Bin)
 	testing.expect(t, len(v.bin) == 2 && v.bin[0] == 0xbb)
+}
+
+@(test)
+test_oracle_stamp_gen_tick_respects_frame_budget :: proc(t: ^testing.T) {
+	// Guarantee: stamp PoW advances in budgeted ticks so the UI poll thread
+	// is not blocked for a full generate_stamp(cost=8, 3000 rounds) call.
+	id: [lxmf.MESSAGE_ID_LEN]u8
+	for i in 0 ..< len(id) {
+		id[i] = u8(i + 1)
+	}
+
+	blocking_ms := stamp_blocking_ms(id[:], 8)
+	testing.expect(t, blocking_ms > 50, "blocking stamp must exceed one UI frame")
+
+	gen: lxmf.Stamp_Gen
+	testing.expect(t, lxmf.stamp_gen_begin(&gen, id[:], 8))
+	defer lxmf.stamp_gen_cancel(&gen)
+
+	tick_ms := stamp_one_tick_ms(&gen)
+	testing.expect(t, tick_ms <= 40, "one stamp tick must stay near the frame budget")
+	testing.expect(t, !gen.done || gen.ok)
+
+	for !gen.done {
+		_ = lxmf.stamp_gen_tick(&gen)
+	}
+	testing.expect(t, gen.ok)
+	testing.expect(t, len(gen.stamp) == lxmf.STAMP_SIZE)
+	fmt.printf("UI_STAMP_FREEZE_PROVED blocking_ms=%.1f tick_ms=%.1f\n", blocking_ms, tick_ms)
+}
+
+@(private)
+stamp_blocking_ms :: proc(message_id: []u8, cost: int) -> f64 {
+	t0 := time.tick_now()
+	stamp, _, ok := lxmf.generate_stamp(message_id, cost)
+	_ = ok
+	if stamp != nil {
+		delete(stamp)
+	}
+	return time.duration_milliseconds(time.tick_since(t0))
+}
+
+@(private)
+stamp_one_tick_ms :: proc(gen: ^lxmf.Stamp_Gen) -> f64 {
+	t0 := time.tick_now()
+	_ = lxmf.stamp_gen_tick(gen)
+	return time.duration_milliseconds(time.tick_since(t0))
 }

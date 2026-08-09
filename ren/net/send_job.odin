@@ -19,6 +19,7 @@ import "ren:store"
 
 Send_Phase :: enum {
 	Idle,
+	Stamping,
 	Finding_Path,
 	Opening_Link,
 	Waiting_Link,
@@ -41,6 +42,8 @@ Send_Job :: struct {
 	message_id:      [lxmf.MESSAGE_ID_LEN]u8,
 	timestamp:       f64,
 	stamped:         bool,
+	stamp_cost:      int,
+	stamp_gen:       lxmf.Stamp_Gen,
 	method:          lxmf.Method,
 	try_fail_over:   bool,
 	failed_over:     bool,
@@ -80,6 +83,7 @@ session_send_cancel :: proc(s: ^Session) {
 		send_link_close(s, s.send.link)
 		s.send.link = 0
 	}
+	lxmf.stamp_gen_cancel(&s.send.stamp_gen)
 	delete(s.send.title)
 	delete(s.send.content)
 	delete(s.send.packed)
@@ -100,6 +104,7 @@ send_fail :: proc(s: ^Session, msg: string) {
 	s.send.done = true
 	s.send.active = false
 	s.send.phase = .Idle
+	lxmf.stamp_gen_cancel(&s.send.stamp_gen)
 	if s.send.link != 0 {
 		send_link_close(s, s.send.link)
 		s.send.link = 0
@@ -109,6 +114,9 @@ send_fail :: proc(s: ^Session, msg: string) {
 @(private)
 send_try_failover :: proc(s: ^Session, reason: string) -> bool {
 	if s.send.failed_over || !s.send.try_fail_over {
+		return false
+	}
+	if len(s.send.packed) == 0 {
 		return false
 	}
 	if s.send.method != .Direct && s.send.method != .Opportunistic {
@@ -212,50 +220,82 @@ send_encrypt :: proc(s: ^Session, dest: []u8, plaintext: []u8) -> ([]u8, bool) {
 }
 
 @(private)
-send_prepare_method :: proc(s: ^Session, method: lxmf.Method) -> bool {
-	cost := 0
-	if s.send.directory != nil {
-		cost = store.directory_stamp_cost(s.send.directory, s.send.dest)
+send_compose_with_stamp :: proc(s: ^Session, method: lxmf.Method, stamp: []u8) -> (lxmf.Message, bool) {
+	m: lxmf.Message
+	lxmf.message_init(&m)
+	m.destination_hash = s.send.dest
+	m.title = strings.clone(s.send.title)
+	m.content = strings.clone(s.send.content)
+	m.method = method
+	if len(stamp) > 0 {
+		m.stamp = bytes_clone(stamp)
 	}
-	msg, ok := lxmf.router_compose(&s.router, s.send.dest, s.send.title, s.send.content, method, cost)
+	// Stamp already filled (or cost 0). message_pack must not block on PoW.
+	if !lxmf.message_pack(&m, &s.router.material, 0) {
+		lxmf.message_destroy(&m)
+		return {}, false
+	}
+	return m, true
+}
+
+@(private)
+send_wire_from_packed :: proc(s: ^Session, method: lxmf.Method, packed: []u8) -> (link_target: [store.HASH_LEN]u8, wire: []u8, ok: bool) {
+	switch method {
+	case .Direct:
+		return s.send.dest, bytes_clone(packed), true
+	case .Opportunistic:
+		plain := lxmf.opportunistic_plaintext(packed)
+		if len(plain) == 0 {
+			return {}, nil, false
+		}
+		return s.send.dest, bytes_clone(plain), true
+	case .Propagated:
+		if s.send.cfg == nil || !s.send.cfg.has_propagation_node {
+			return {}, nil, false
+		}
+		plain := lxmf.opportunistic_plaintext(packed)
+		if len(plain) == 0 {
+			return {}, nil, false
+		}
+		enc, eok := send_encrypt(s, s.send.dest[:], plain)
+		if !eok {
+			return {}, nil, false
+		}
+		defer delete(enc)
+		wrap := lxmf.pack_propagation_payload(packed, enc)
+		if wrap == nil {
+			return {}, nil, false
+		}
+		return s.send.cfg.propagation_node, wrap, true
+	case .Paper, .Unknown:
+		return {}, nil, false
+	}
+	return {}, nil, false
+}
+
+@(private)
+send_prepare_method :: proc(s: ^Session, method: lxmf.Method, stamp: []u8 = nil) -> bool {
+	// Reuse packed bytes on failover so stamp PoW is not repeated.
+	if len(s.send.packed) > 0 && s.send.failed_over {
+		link_target, wire, wok := send_wire_from_packed(s, method, s.send.packed)
+		if !wok {
+			return false
+		}
+		delete(s.send.wire)
+		s.send.method = method
+		s.send.link_target = link_target
+		s.send.wire = wire
+		return true
+	}
+
+	msg, ok := send_compose_with_stamp(s, method, stamp)
 	if !ok {
 		return false
 	}
 	defer lxmf.message_destroy(&msg)
 
-	link_target := s.send.dest
-	wire: []u8
-	switch method {
-	case .Direct:
-		link_target = s.send.dest
-		wire = bytes_clone(msg.packed)
-	case .Opportunistic:
-		link_target = s.send.dest
-		plain := lxmf.opportunistic_plaintext(msg.packed)
-		if len(plain) == 0 {
-			return false
-		}
-		wire = bytes_clone(plain)
-	case .Propagated:
-		if s.send.cfg == nil || !s.send.cfg.has_propagation_node {
-			return false
-		}
-		link_target = s.send.cfg.propagation_node
-		plain := lxmf.opportunistic_plaintext(msg.packed)
-		if len(plain) == 0 {
-			return false
-		}
-		enc, eok := send_encrypt(s, s.send.dest[:], plain)
-		if !eok {
-			return false
-		}
-		defer delete(enc)
-		wrap := lxmf.pack_propagation_payload(msg.packed, enc)
-		if wrap == nil {
-			return false
-		}
-		wire = wrap
-	case .Paper, .Unknown:
+	link_target, wire, wok := send_wire_from_packed(s, method, msg.packed)
+	if !wok {
 		return false
 	}
 
@@ -269,6 +309,48 @@ send_prepare_method :: proc(s: ^Session, method: lxmf.Method) -> bool {
 	s.send.link_target = link_target
 	s.send.wire = wire
 	return true
+}
+
+@(private)
+send_start_stamping :: proc(s: ^Session) -> bool {
+	m: lxmf.Message
+	lxmf.message_init(&m)
+	defer lxmf.message_destroy(&m)
+	m.destination_hash = s.send.dest
+	m.title = strings.clone(s.send.title)
+	m.content = strings.clone(s.send.content)
+	m.method = s.send.method
+	if !lxmf.message_assign_id(&m, &s.router.material) {
+		return false
+	}
+	s.send.message_id = m.message_id
+	s.send.timestamp = m.timestamp
+	if !lxmf.stamp_gen_begin(&s.send.stamp_gen, m.message_id[:], s.send.stamp_cost) {
+		return false
+	}
+	s.send.phase = .Stamping
+	// Stamp can take seconds of CPU. Do not burn the link deadline during PoW.
+	s.send.phase_deadline = time.tick_add(time.tick_now(), 10 * time.Minute)
+	send_set_status(s, "computing stamp...")
+	return true
+}
+
+@(private)
+send_enter_delivery :: proc(s: ^Session) {
+	s.send.deadline = time.tick_add(time.tick_now(), time.Duration(constants.LINK_TIMEOUT_SEC * 2) * time.Second)
+	if s.send.method == .Opportunistic {
+		s.send.phase = .Packet_Send
+		send_set_status(s, "sending opportunistic...")
+	} else {
+		s.send.phase = .Finding_Path
+		s.send.path_refreshed = false
+		s.send.retry_at = time.tick_now()
+		s.send.phase_deadline = time.tick_add(
+			time.tick_now(),
+			time.Duration(constants.PATH_FIND_TIMEOUT_SEC) * time.Second,
+		)
+		send_set_status(s, "finding path...")
+	}
 }
 
 session_send_begin :: proc(
@@ -316,9 +398,27 @@ session_send_begin :: proc(
 	s.send.conversations = conversations
 	s.send.directory = directory
 	s.send.cfg = cfg
+	s.send.method = use_method
 	s.send.try_fail_over = cfg != nil && cfg.try_propagation_on_fail && cfg.has_propagation_node
 	s.send.failed_over = false
 	s.send.deadline = time.tick_add(time.tick_now(), time.Duration(constants.LINK_TIMEOUT_SEC * 2) * time.Second)
+	if directory != nil {
+		s.send.stamp_cost = store.directory_stamp_cost(directory, dest_hash)
+	}
+
+	// Keep the outbound text in the conversation even if path/link/stamp fails later.
+	send_persist_out(s)
+	s.send.persisted_out = true
+
+	if s.send.stamp_cost > 0 {
+		if !send_start_stamping(s) {
+			session_send_cancel(s)
+			session_event_push(s, .Send_Failed, "stamp start failed")
+			return false
+		}
+		session_send_tick(s)
+		return true
+	}
 
 	if !send_prepare_method(s, use_method) {
 		session_send_cancel(s)
@@ -326,23 +426,7 @@ session_send_begin :: proc(
 		return false
 	}
 
-	// Keep the outbound text in the conversation even if path/link fails later.
-	send_persist_out(s)
-	s.send.persisted_out = true
-
-	if use_method == .Opportunistic {
-		s.send.phase = .Packet_Send
-		send_set_status(s, "sending opportunistic...")
-	} else {
-		s.send.phase = .Finding_Path
-		s.send.path_refreshed = false
-		s.send.retry_at = time.tick_now()
-		s.send.phase_deadline = time.tick_add(
-			time.tick_now(),
-			time.Duration(constants.PATH_FIND_TIMEOUT_SEC) * time.Second,
-		)
-		send_set_status(s, "finding path...")
-	}
+	send_enter_delivery(s)
 	session_send_tick(s)
 	return true
 }
@@ -383,6 +467,7 @@ session_send_direct :: proc(
 
 @(private)
 session_send_finish_cleanup :: proc(s: ^Session) {
+	lxmf.stamp_gen_cancel(&s.send.stamp_gen)
 	delete(s.send.title)
 	delete(s.send.content)
 	delete(s.send.packed)
@@ -527,7 +612,7 @@ session_send_tick :: proc(s: ^Session) {
 		return
 	}
 	now := time.tick_now()
-	if time.tick_diff(now, s.send.deadline) <= 0 {
+	if s.send.phase != .Stamping && time.tick_diff(now, s.send.deadline) <= 0 {
 		send_fail(s, "link timeout")
 		return
 	}
@@ -535,6 +620,33 @@ session_send_tick :: proc(s: ^Session) {
 	switch s.send.phase {
 	case .Idle, .Done:
 		return
+	case .Stamping:
+		if time.tick_diff(now, s.send.phase_deadline) <= 0 {
+			send_fail(s, "stamp timeout")
+			return
+		}
+		prev_attempts := s.send.stamp_gen.attempts
+		prev_rounds := s.send.stamp_gen.rounds_done
+		if !lxmf.stamp_gen_tick(&s.send.stamp_gen) {
+			if s.send.stamp_gen.rounds_done != prev_rounds || s.send.stamp_gen.attempts == 0 {
+				send_set_status(s, "computing stamp...")
+			} else if s.send.stamp_gen.attempts != prev_attempts {
+				send_set_status(s, fmt.tprintf("computing stamp (try %d)...", s.send.stamp_gen.attempts))
+			}
+			return
+		}
+		if !s.send.stamp_gen.ok || len(s.send.stamp_gen.stamp) == 0 {
+			send_fail(s, "stamp failed")
+			return
+		}
+		stamp := s.send.stamp_gen.stamp
+		if !send_prepare_method(s, s.send.method, stamp) {
+			send_fail(s, "compose failed")
+			return
+		}
+		lxmf.stamp_gen_cancel(&s.send.stamp_gen)
+		send_enter_delivery(s)
+		session_send_tick(s)
 	case .Packet_Send:
 		if len(s.send.wire) == 0 {
 			send_fail(s, "empty opportunistic payload")

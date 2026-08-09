@@ -36,7 +36,7 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			mark_dirty(a)
 		}
 	}
-	if net.session_page_busy(&a.session) {
+	if net.session_page_busy(&a.session) || net.session_send_busy(&a.session) {
 		mark_dirty(a)
 	}
 	a.poll_ticks += 1

@@ -122,7 +122,11 @@ pack_payload_core :: proc(m: ^Message, include_stamp: bool) -> []u8 {
 	return bytes.clone(writer_bytes(&w))
 }
 
-message_pack :: proc(m: ^Message, material: ^Identity_Material, stamp_cost: int = 0, ticket: []u8 = nil) -> bool {
+// Sets source hash and message id from the payload without stamp.
+message_assign_id :: proc(m: ^Message, material: ^Identity_Material) -> bool {
+	if material == nil {
+		return false
+	}
 	if m.timestamp == 0 {
 		m.timestamp = f64(time.time_to_unix_nano(time.now())) / 1_000_000_000.0
 	}
@@ -140,6 +144,22 @@ message_pack :: proc(m: ^Message, material: ^Identity_Material, stamp_cost: int 
 	copy(hashed[HASH_LEN * 2:], payload_no_stamp)
 
 	m.message_id = full_hash(hashed)
+	return true
+}
+
+message_pack :: proc(m: ^Message, material: ^Identity_Material, stamp_cost: int = 0, ticket: []u8 = nil) -> bool {
+	if !message_assign_id(m, material) {
+		return false
+	}
+
+	payload_no_stamp := pack_payload_core(m, false)
+	defer delete(payload_no_stamp)
+
+	hashed := make([]u8, HASH_LEN + HASH_LEN + len(payload_no_stamp))
+	defer delete(hashed)
+	copy(hashed[0:HASH_LEN], m.destination_hash[:])
+	copy(hashed[HASH_LEN:HASH_LEN * 2], m.source_hash[:])
+	copy(hashed[HASH_LEN * 2:], payload_no_stamp)
 
 	if stamp_cost > 0 && len(m.stamp) == 0 {
 		if len(ticket) == TICKET_LENGTH {
