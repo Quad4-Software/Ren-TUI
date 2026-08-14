@@ -94,7 +94,7 @@ ODIN=${ODIN:-odin}
 
 GIT_COMMIT=$(git -C "${ROOT}" rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE=$(date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || echo unknown)
-VERSION_DEFINES="-define:REN_GIT_COMMIT=${GIT_COMMIT} -define:REN_BUILD_DATE=${BUILD_DATE}"
+VERSION_DEFINES="-define:REN_GIT_COMMIT=\"${GIT_COMMIT}\" -define:REN_BUILD_DATE=\"${BUILD_DATE}\""
 
 build_one() {
 	cmd="$1"

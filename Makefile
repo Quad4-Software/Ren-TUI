@@ -40,7 +40,7 @@ LISTEN       := bin/ren-listen
 
 GIT_COMMIT    ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
 BUILD_DATE    ?= $(shell date -u +%Y-%m-%dT%H:%MZ 2>/dev/null || echo unknown)
-VERSION_DEFINES := -define:REN_GIT_COMMIT=$(GIT_COMMIT) -define:REN_BUILD_DATE=$(BUILD_DATE)
+VERSION_DEFINES := -define:REN_GIT_COMMIT=\"$(GIT_COMMIT)\" -define:REN_BUILD_DATE=\"$(BUILD_DATE)\"
 
 ODIN_TEST_ENV := LIBRARY_PATH="$(VENDOR_LIB):$${LIBRARY_PATH:-}" LD_LIBRARY_PATH="$(ROOT)/bin:$${LD_LIBRARY_PATH:-}"
 ODIN_TEST_FLAGS := -collection:ren=$(ROOT)/ren -collection:rns=$(VENDOR_ODIN) $(LINKER_FLAGS) $(VERSION_DEFINES)
