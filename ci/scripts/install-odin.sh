@@ -9,7 +9,7 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
 . "${ROOT}/ci/scripts/lib-env.sh"
 ci_load_env
 
-ODIN_VERSION=${ODIN_VERSION:-dev-2026-07a}
+ODIN_VERSION=${ODIN_VERSION:-dev-2026-08}
 ARCH=$(uname -m)
 OS=$(uname -s)
 

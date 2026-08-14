@@ -49,7 +49,7 @@ docker build -f docker/Dockerfile.alpine --target export -o type=local,dest=./ou
 ```
 docker build -f docker/Dockerfile \
   --build-arg DEBIAN_IMAGE=debian@sha256:... \
-  --build-arg ODIN_VERSION=dev-2026-07a \
+  --build-arg ODIN_VERSION=dev-2026-08 \
   --build-arg ODIN_LINUX_AMD64_SHA256=... \
   -t ren-tui .
 ```

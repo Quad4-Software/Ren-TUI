@@ -13,7 +13,7 @@ ci_load_env 2>/dev/null || true
 OUT_DIR=${OUT_DIR:-${ROOT}/vendor/librns/lib-musl}
 DEST=${RNS_ROOT:-${ROOT}/.deps/Reticulum-Go}
 REPO=${RNS_REPO:-https://github.com/Quad4-Software/Reticulum-Go.git}
-REF=${RNS_REF:-dev}
+REF=${RNS_REF:-v1.0.2}
 
 mkdir -p "${OUT_DIR}" "$(dirname "${DEST}")"
 
@@ -36,11 +36,11 @@ rm -f "${OUT_DIR}/librns.h" "${OUT_DIR}/librns.so"
 cp -f "${DEST}/include/rns.h" "${ROOT}/vendor/librns/include/rns.h"
 
 if ! nm "${OUT_DIR}/librns.a" 2>/dev/null | grep -q 'T rns_destination_encrypt'; then
-	echo "error: librns.a missing rns_destination_encrypt (ABI too old? use RNS_REF=dev)" >&2
+	echo "error: librns.a missing rns_destination_encrypt (ABI too old? bump RNS_REF)" >&2
 	exit 1
 fi
 if ! nm "${OUT_DIR}/librns.a" 2>/dev/null | grep -q 'T rns_packet_send'; then
-	echo "error: librns.a missing rns_packet_send (ABI too old? use RNS_REF=dev)" >&2
+	echo "error: librns.a missing rns_packet_send (ABI too old? bump RNS_REF)" >&2
 	exit 1
 fi
 
