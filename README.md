@@ -9,7 +9,7 @@ Ren TUI is a terminal LXMF client for [Reticulum](https://reticulum.network/) bu
 
 rngit: `git clone rns://06a54b505bb67b25ef3f8097e8001edc/public/ren-tui`
 
-Reticulum-Go: v1.0.2
+Reticulum-Go: v1.1.0
 
 ## Design
 

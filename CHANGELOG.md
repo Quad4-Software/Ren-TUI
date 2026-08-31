@@ -2,9 +2,9 @@
 
 New work goes under the [draft] section only. Do not edit [released] sections after a tag ships.
 
-## 0.2.1 - 2026-08-14 [draft]
+## 0.2.1 - 2026-08-31 [unreleased]
 
-- Pin Reticulum-Go to v1.0.2 and bump Go toolchain to 1.26.x and Odin to dev-2026-08 across CI, release, and Docker
+- Pin Reticulum-Go to v1.1.0 and bump Go toolchain to 1.26.x and Odin to dev-2026-08 across CI, release, and Docker
 - Fix LXMF delivery proofs stuck at 50 percent on NomadNet/Python: responder links sign proofs with the destination identity key (not ephemeral Ed25519)
 - librns Link.Validate uses peer_sig_pub like Python so receipts can reach DELIVERED
 - Packet receipts keep the sending link for proof validation
