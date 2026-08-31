@@ -4,6 +4,7 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 
 ## 0.2.1 - 2026-08-31 [unreleased]
 
+- Handle ed25519.private_key_set_bytes result for Odin dev-2026-08
 - Pin Reticulum-Go to v1.1.0 and bump Go toolchain to 1.26.x and Odin to dev-2026-08 across CI, release, and Docker
 - Fix LXMF delivery proofs stuck at 50 percent on NomadNet/Python: responder links sign proofs with the destination identity key (not ephemeral Ed25519)
 - librns Link.Validate uses peer_sig_pub like Python so receipts can reach DELIVERED

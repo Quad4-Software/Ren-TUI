@@ -44,13 +44,16 @@ identity_public_key :: proc(m: ^Identity_Material) -> [64]u8 {
 	return out
 }
 
-identity_derive :: proc(m: ^Identity_Material) {
+identity_derive :: proc(m: ^Identity_Material) -> bool {
 	x25519.scalarmult_basepoint(m.enc_pub[:], m.enc_priv[:])
-	ed25519.private_key_set_bytes(&m.priv, m.sign_seed[:])
+	if !ed25519.private_key_set_bytes(&m.priv, m.sign_seed[:]) {
+		return false
+	}
 	ed25519.private_key_public_bytes(&m.priv, m.sign_pub[:])
 	pub := identity_public_key(m)
 	m.hash = truncated_hash(pub[:])
 	m.loaded = true
+	return true
 }
 
 identity_from_blob :: proc(blob: []u8) -> (Identity_Material, bool) {
@@ -60,7 +63,9 @@ identity_from_blob :: proc(blob: []u8) -> (Identity_Material, bool) {
 	m: Identity_Material
 	copy(m.enc_priv[:], blob[:32])
 	copy(m.sign_seed[:], blob[32:64])
-	identity_derive(&m)
+	if !identity_derive(&m) {
+		return {}, false
+	}
 	return m, true
 }
 
@@ -98,7 +103,9 @@ identity_generate :: proc() -> (Identity_Material, bool) {
 		return {}, false
 	}
 	crypto.rand_bytes(m.enc_priv[:])
-	identity_derive(&m)
+	if !identity_derive(&m) {
+		return {}, false
+	}
 	return m, true
 }
 
