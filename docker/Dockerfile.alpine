@@ -3,8 +3,8 @@
 # (verified with a tiny C caller of rns_version). Keep this file for when
 # upstream Reticulum-Go / Go musl support is fixed.
 #
-# The vendored lib-musl/librns.a can lag the Odin ABI. This image always
-# rebuilds a musl c-archive from Reticulum-Go before linking ren-tui.
+# The Alpine image always rebuilds a musl c-archive from Reticulum-Go.
+# lib-musl/ is not committed; it is produced at image build time.
 
 ARG GOLANG_IMAGE=golang:1.26-alpine
 ARG ALPINE_IMAGE=alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce

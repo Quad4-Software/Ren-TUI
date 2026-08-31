@@ -92,8 +92,10 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
             DEBIAN_IMAGE=${{ env.DEBIAN_IMAGE }}
+            GOLANG_IMAGE=${{ env.GOLANG_IMAGE }}
             ODIN_VERSION=${{ env.ODIN_VERSION }}
             ODIN_LINUX_AMD64_SHA256=${{ env.ODIN_LINUX_AMD64_SHA256 }}
+            RNS_REF=${{ env.RNS_REF }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           provenance: true

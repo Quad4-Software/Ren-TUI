@@ -156,16 +156,15 @@ Odin emits **one ELF executable per target** (`ren-tui`, `ren-listen`). That is 
 
 Runtime needs:
 
-- vendored `librns.so` (copied to `bin/` on build, rpath points at `bin/`)
+- `librns.so` built via `make ensure-librns` (copied to `bin/` on build, rpath points at `bin/`)
 - system `libc` / `libm` (and usually `libresolv`)
 
-`vendor/librns/` ships the shared library, C header, and Odin bindings. Refresh with Make:
+`vendor/librns/` keeps the C header and Odin bindings in git. Shared libraries are not committed. Build them from the pinned Reticulum-Go ref:
 
 ```
+make ensure-librns
 make vendor-librns RNS_ROOT=/path/to/Reticulum-Go
 ```
-
-(That target builds librns in the upstream tree, then copies artifacts here.)
 
 ## Current Supported Platforms
 
@@ -222,13 +221,14 @@ Force a mode with `REN_UI=full|256|compat|dumb` or `color = ...` in config. `NO_
 ## Requirements
 
 - Odin compiler
-- Vendored librns (already in-tree under `vendor/librns`)
+- Go 1.26+ and a C toolchain (`make ensure-librns` builds librns from `RNS_REF`)
 - A Reticulum config (defaults prefer `~/.reticulum-go/config`)
 - A supported terminal with UTF-8 (see above)
 
 ## Build
 
 ```
+make ensure-librns
 make
 make help
 make test

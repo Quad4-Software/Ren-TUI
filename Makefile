@@ -1,5 +1,5 @@
 # Ren TUI
-# Build with vendored librns. Requires odin on PATH.
+# Build against librns from RNS_REF (make ensure-librns). Requires odin on PATH.
 
 ODIN        ?= odin
 ROOT        := $(CURDIR)
@@ -50,7 +50,7 @@ ODIN_TEST_SERIAL_FLAGS := $(ODIN_TEST_FLAGS) -define:ODIN_TEST_THREADS=1
 	test-smoke test-unit test-property test-fuzz test-acceptance \
 	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop \
 	test-oracle test-blackbox \
-	test-live run listen vendor-librns vendor-librns-musl remotes help man check dist cross bench \
+	test-live run listen ensure-librns vendor-librns vendor-librns-musl remotes help man check dist cross bench \
 	package package-deb package-rpm package-arch package-nix
 
 all: $(OUT) $(LISTEN)
@@ -83,7 +83,8 @@ help:
 		'  uninstall      remove installed files' \
 		'  man            show man page sources under man/' \
 		'  remotes        configure origin fetch=GitHub, push=GitHub+RNS' \
-		'  vendor-librns  refresh vendored glibc librns.so (RNS_ROOT=...)' \
+		'  ensure-librns  fetch Reticulum-Go (RNS_REF) and build vendor glibc librns.so' \
+		'  vendor-librns  copy glibc librns.so from RNS_ROOT into vendor/' \
 		'  vendor-librns-musl  rebuild vendor/librns/lib-musl/librns.a (needs go+musl)' \
 		'  cross          build for TARGET= (uses ci/scripts/build-target.sh)' \
 		'  clean          remove bin/' \
@@ -95,6 +96,13 @@ help:
 		'  package-nix    build with nix (needs nix, flake.nix)' \
 		'' \
 		'Variables: PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) LIVE_SECS=$(LIVE_SECS) LIBC=$(LIBC) TARGET= RNS_ROOT='
+
+$(LIBRNS):
+ifeq ($(LIBC),musl)
+	@test -f "$(LIBRNS)" || (echo "missing $(LIBRNS); run: make vendor-librns-musl" >&2; exit 2)
+else
+	@test -f "$(LIBRNS)" || (echo "missing $(LIBRNS); run: make ensure-librns" >&2; exit 2)
+endif
 
 $(BIN_LIBRNS): $(LIBRNS)
 ifeq ($(LIBC),musl)
@@ -235,9 +243,16 @@ remotes:
 	@git remote set-url --add --push origin $(REMOTE_RNS)
 	@git remote -v
 
+ensure-librns:
+	sh $(ROOT)/ci/scripts/ensure-librns.sh
+
 vendor-librns:
 	@test -n "$(RNS_ROOT)" || (echo "usage: make vendor-librns RNS_ROOT=/path/to/Reticulum-Go" >&2; exit 2)
-	cd "$(RNS_ROOT)" && task build-librns
+	@test -f "$(RNS_ROOT)/bin/librns.so" || ( \
+		cd "$(RNS_ROOT)" && \
+		if command -v task >/dev/null 2>&1; then task build-librns; \
+		else mkdir -p bin && CGO_ENABLED=1 go build -buildmode=c-shared -o bin/librns.so ./cmd/librns && cp -f include/rns.h bin/rns.h; \
+		fi)
 	mkdir -p "$(VENDOR_RNS)/lib" "$(VENDOR_RNS)/include" "$(VENDOR_ODIN)/rns" "$(VENDOR_RNS)/lib/linux/amd64"
 	cp -f "$(RNS_ROOT)/bin/librns.so" "$(VENDOR_RNS)/lib/librns.so"
 	cp -f "$(RNS_ROOT)/bin/librns.so" "$(VENDOR_RNS)/lib/linux/amd64/librns.so"

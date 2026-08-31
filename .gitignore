@@ -3,7 +3,6 @@ bin/
 *.bin
 *.o
 *.a
-!vendor/librns/lib-musl/librns.a
 .ols
 *.log
 .DS_Store
@@ -13,10 +12,13 @@ dist/
 .deps/
 result
 
-# Ignore stray shared libs, keep the vendored ones
+# Shared libs are build artifacts (make ensure-librns / vendor-librns)
 *.so
 *.dll
 *.dylib
 *.exe
-!vendor/librns/lib/librns.so
 !bin/librns.so
+
+# Never commit prebuilt librns binaries
+vendor/librns/lib/
+vendor/librns/lib-musl/

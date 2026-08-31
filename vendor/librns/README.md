@@ -1,17 +1,28 @@
-# Vendored librns (Reticulum-Go C ABI)
+# librns (Reticulum-Go C ABI)
 
-Contents:
+Git tracks only the ABI surface:
 
-- `lib/librns.so` host Linux shared library (glibc amd64 default)
-- `lib-musl/librns.a` optional musl static archive (refresh with `make vendor-librns-musl`)
-- `lib/<os>/<arch>/` optional multi-arch outputs from CI / `make cross`
 - `include/rns.h` C header
 - `odin/rns/` Odin bindings (`collection:rns`)
 
-Rebuild host library from an external Reticulum-Go tree:
+Shared libraries under `lib/` and `lib-musl/` are build artifacts (gitignored).
+
+Build glibc `librns.so` from the pinned `RNS_REF` in `.github/ci.env`:
+
+```
+make ensure-librns
+```
+
+Or from an existing Reticulum-Go tree:
 
 ```
 make vendor-librns RNS_ROOT=/path/to/Reticulum-Go
+```
+
+On hosts newer than glibc 2.35, build with Zig so Ubuntu 22.04 / Debian bookworm can still link:
+
+```
+CC='zig cc -target x86_64-linux-gnu.2.35' make ensure-librns
 ```
 
 Rebuild the musl static archive (needs Go + musl libc/headers):
@@ -29,5 +40,4 @@ make cross TARGET=linux-arm64 RNS_ROOT=/path/to/Reticulum-Go
 make cross TARGET=linux-i386 RNS_ROOT=/path/to/Reticulum-Go
 ```
 
-Release CI builds per-target librns with Zig (Windows / 32-bit Linux) or native
-toolchains (linux-arm64, macOS) rather than committing every shared library blob.
+CI and Docker build librns from `RNS_REF` rather than committing library blobs.

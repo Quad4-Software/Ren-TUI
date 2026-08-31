@@ -1,6 +1,26 @@
 # Build ren-tui binaries in Docker (glibc) and optionally export them.
+# Builds librns from RNS_REF (not committed in git).
 
 ARG DEBIAN_IMAGE=debian@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
+ARG GOLANG_IMAGE=golang:1.26-bookworm
+ARG RNS_REPO=https://github.com/Quad4-Software/Reticulum-Go.git
+ARG RNS_REF=v1.1.0
+
+FROM ${GOLANG_IMAGE} AS librns
+ARG RNS_REPO
+ARG RNS_REF
+
+RUN apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates git gcc libc6-dev \
+	&& rm -rf /var/lib/apt/lists/*
+
+WORKDIR /rns
+RUN git clone --depth 1 --branch "${RNS_REF}" "${RNS_REPO}" . \
+	|| git clone --depth 1 "${RNS_REPO}" .
+
+RUN mkdir -p /out \
+	&& CGO_ENABLED=1 go build -mod=vendor -buildmode=c-shared -o /out/librns.so ./cmd/librns \
+	&& cp include/rns.h /out/rns.h
 
 FROM ${DEBIAN_IMAGE} AS builder
 
@@ -23,6 +43,9 @@ RUN apt-get update \
 
 WORKDIR /src
 COPY . .
+
+COPY --from=librns /out/librns.so vendor/librns/lib/librns.so
+COPY --from=librns /out/rns.h vendor/librns/include/rns.h
 
 RUN sh ci/scripts/install-odin.sh \
 	&& make dist LIBC=glibc
