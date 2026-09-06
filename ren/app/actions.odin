@@ -220,6 +220,24 @@ open_lxmf_peer :: proc(a: ^App, peer: [store.HASH_LEN]u8) {
 	set_status(a, "opened LXMF conversation", STATUS_HOLD)
 }
 
+// Message id the reply should thread under. Uses the selected message
+// (a.msg_sel) when valid, else the newest message in the conversation.
+conv_reply_target :: proc(a: ^App) -> (id: [lxmf.MESSAGE_ID_LEN]u8, ok: bool) {
+	idx := conv_selected_store_idx(a)
+	if idx < 0 {
+		return {}, false
+	}
+	msgs := a.conversations.items[idx].messages
+	if len(msgs) == 0 {
+		return {}, false
+	}
+	sel := a.msg_sel
+	if sel < 0 || sel >= len(msgs) {
+		sel = len(msgs) - 1
+	}
+	return msgs[sel].id, true
+}
+
 try_conv_reply :: proc(a: ^App) {
 	idx := conv_selected_store_idx(a)
 	if idx < 0 {
@@ -244,7 +262,11 @@ try_conv_reply :: proc(a: ^App) {
 		set_status(a, "select a propagation node in Network > Propagation first", STATUS_HOLD)
 		return
 	}
-	if net.session_send_begin(&a.session, peer, "", body, &a.conversations, &a.directory, &a.cfg, method) {
+	reply_to: [lxmf.MESSAGE_ID_LEN]u8
+	if a.conv_reply_has {
+		reply_to = a.conv_reply_to
+	}
+	if net.session_send_begin(&a.session, peer, "", body, &a.conversations, &a.directory, &a.cfg, method, reply_to) {
 		// Keep reply text until Send_Ok so a path/link failure does not wipe it.
 		set_status(a, fmt.tprintf("sending (%s)...", lxmf.method_label(method)), STATUS_HOLD)
 		mark_dirty(a)

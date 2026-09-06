@@ -57,6 +57,7 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	a.paths = make([dynamic]Path_View)
 	a.tab = .Network
 	a.net_view = .Nomad
+	a.msg_sel = -1
 	a.ui_dirty = true
 	a.status_left = status_copy_buf(a.status_left_buf[:], nil, version.line(context.temp_allocator))
 	a.status_right = status_copy_buf(a.status_hold[:], &a.status_hold_len, "starting")
@@ -205,7 +206,7 @@ footer_keybinds :: proc(a: ^App) -> string {
 		}
 		return "g URL  Esc Network"
 	case .Conversations:
-		return "r rename  Enter reply  / search  u sync  Up/Dn list  PgUp/Dn msgs"
+		return "r rename  Enter reply  ,/. msg  / search  u sync  Up/Dn list  PgUp/Dn"
 	case .Network:
 		return "l/n/p views  / search  Enter set/open  u sync"
 	case .Interfaces:

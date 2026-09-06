@@ -109,7 +109,7 @@ conversations_encode_peer :: proc(conv: ^Conversation) -> ([]u8, bool) {
 	lxmf.write_str(&w, conv.custom_name)
 	lxmf.write_array_header(&w, len(conv.messages))
 	for m in conv.messages {
-		lxmf.write_array_header(&w, 9)
+		lxmf.write_array_header(&w, 11)
 		id := m.id
 		lxmf.write_bin(&w, id[:])
 		lxmf.write_int(&w, 0 if m.direction == .In else 1)
@@ -120,6 +120,13 @@ conversations_encode_peer :: proc(conv: ^Conversation) -> ([]u8, bool) {
 		lxmf.write_bool(&w, m.verified)
 		lxmf.write_bool(&w, m.stamped)
 		lxmf.write_int(&w, i64(m.hops))
+		lxmf.write_int(&w, i64(m.state))
+		if m.has_reply_to {
+			rt := m.reply_to
+			lxmf.write_bin(&w, rt[:])
+		} else {
+			lxmf.write_bin(&w, nil)
+		}
 	}
 	return bytes_clone(lxmf.writer_bytes(&w)), true
 }
@@ -236,6 +243,17 @@ conversations_decode_file :: proc(c: ^Conversations, peer: [HASH_LEN]u8, data: [
 		}
 		if h, ok := lxmf.as_int(item.array[8]); ok {
 			msg.hops = u8(h)
+		}
+		if len(item.array) >= 10 {
+			if st, ok := lxmf.as_int(item.array[9]); ok {
+				msg.state = Message_State(u8(clamp(st, 0, i64(Message_State.Read))))
+			}
+		}
+		if len(item.array) >= 11 {
+			if rt, ok := lxmf.as_bytes(item.array[10]); ok && len(rt) == lxmf.MESSAGE_ID_LEN {
+				copy(msg.reply_to[:], rt)
+				msg.has_reply_to = true
+			}
 		}
 		append(&conv.messages, msg)
 	}

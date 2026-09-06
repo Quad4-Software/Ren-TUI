@@ -100,6 +100,7 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 	if a.conv_replying && a.tab == .Conversations {
 		if ev.kind == .Esc {
 			a.conv_replying = false
+			a.conv_reply_has = false
 			ui.input_clear(&a.conv_reply)
 			return false
 		}
@@ -209,7 +210,12 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 				} else if a.tab == .Conversations {
 					a.conv_searching = true
 					a.conv_replying = false
+					a.conv_reply_has = false
 					set_status(a, "search conversations  Enter done  Esc cancel", STATUS_HOLD)
+				}
+			case ',', '.':
+				if a.tab == .Conversations {
+					conv_move_msg_sel(a, 1 if ev.ch == '.' else -1)
 				}
 			case 'r', 'R':
 				if a.tab == .Conversations {
@@ -332,7 +338,14 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 				peer := a.conversations.items[idx].peer_hash
 				select_conversation(a, peer)
 				a.conv_replying = true
-				set_status(a, "reply mode  Enter send  Esc cancel", STATUS_HOLD)
+				if id, ok := conv_reply_target(a); ok {
+					a.conv_reply_to = id
+					a.conv_reply_has = true
+					set_status(a, "reply to selected message  Enter send  Esc cancel", STATUS_HOLD)
+				} else {
+					a.conv_reply_has = false
+					set_status(a, "reply mode  Enter send  Esc cancel", STATUS_HOLD)
+				}
 			}
 		}
 	case .Network:
@@ -535,6 +548,7 @@ handle_session_events :: proc(a: ^App) {
 			ui.input_clear(&a.conv_reply)
 			ui.input_clear(&a.compose_body)
 			a.conv_replying = false
+			a.conv_reply_has = false
 			refresh_conv_list(a)
 			conv_scroll_to_latest(a)
 			mark_dirty(a)
@@ -586,6 +600,34 @@ network_selected_is_nomad :: proc(a: ^App) -> bool {
 		return false
 	}
 	return a.directory.peers[idx].kind == .Nomad_Node
+}
+
+// Move the reply-target selection within the open conversation. delta -1 goes
+// to older messages, +1 to newer. msg_sel -1 means track the latest message.
+conv_move_msg_sel :: proc(a: ^App, delta: int) {
+	idx := conv_selected_store_idx(a)
+	if idx < 0 {
+		return
+	}
+	n := len(a.conversations.items[idx].messages)
+	if n == 0 {
+		return
+	}
+	sel := a.msg_sel
+	if sel < 0 || sel >= n {
+		sel = n - 1
+	}
+	sel = clamp(sel + delta, 0, n - 1)
+	a.msg_sel = sel
+	// Keep the selected message on screen (each message paints 3 rows).
+	visible := max(1, a.detail_rect.h / 3)
+	if sel < a.msg_scroll {
+		a.msg_scroll = sel
+	} else if sel >= a.msg_scroll + visible {
+		a.msg_scroll = sel - visible + 1
+	}
+	set_status(a, fmt.tprintf("message %d/%d selected  Enter reply", sel + 1, n), STATUS_HOLD)
+	mark_dirty(a)
 }
 
 conv_mark_selected_read :: proc(a: ^App) {

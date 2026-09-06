@@ -61,7 +61,9 @@ GUIDE_LINES := [?]string{
 	"",
 	"Conversations",
 	"r         rename contact   Enter reply   / search   u sync",
+	", / .     select message to reply to (threads via LXMF field 0x08)",
 	"Up/Down list (opens latest)   click select   PgUp/PgDn messages",
+	"State: ... sending   > sent   >> delivered   ! failed",
 	"Names: custom > announce > hash   sorted by last activity",
 	"",
 	"Config ~/.config/ren-tui/config",
@@ -183,17 +185,27 @@ draw_conversations :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		out := msg.direction == .Out
 		arrow := "->" if out else "<-"
 		sig := "ok" if msg.verified else "?"
+		dstate := message_state_tag(msg)
 		ago := relative_time_ago(msg.timestamp, context.temp_allocator)
 		hops := store.format_peer_hops(msg.hops, msg.hops > 0)
+		re := ""
+		if msg.has_reply_to {
+			rh := message_id_hex_short(msg.reply_to, context.temp_allocator)
+			re = fmt.tprintf("re:%s ", rh)
+		}
+		sel_tag := ">" if a.msg_sel == i else " "
 		meta: string
 		if ago != "" {
-			meta = fmt.tprintf("%s %s  %s  %s", sig, arrow, ago, hops)
+			meta = fmt.tprintf("%s%s%s %s  %s  %s %s", sel_tag, re, sig, arrow, ago, hops, dstate)
 		} else {
-			meta = fmt.tprintf("%s %s  %s", sig, arrow, hops)
+			meta = fmt.tprintf("%s%s%s %s  %s %s", sel_tag, re, sig, arrow, hops, dstate)
 		}
 		body := msg.content
 		if msg.title != "" {
 			body = fmt.tprintf("[%s] %s", msg.title, msg.content)
+		}
+		if msg.has_reply_to {
+			body = fmt.tprintf("  %s", body)
 		}
 
 		if out {
@@ -227,6 +239,30 @@ draw_conversations :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		edit_r := ui.Rect{right.x, right.y + right.h - 3, right.w, 3}
 		ui.draw_input(buf, edit_r, &a.conv_reply, "reply", true)
 	}
+}
+
+// Short delivery tag for the meta line. Only outbound states and inbound
+// unread produce a marker so old files stay clean.
+message_state_tag :: proc(m: store.Stored_Message) -> string {
+	if m.direction == .Out {
+		switch m.state {
+		case .Sending:
+			return "..."
+		case .Sent:
+			return ">"
+		case .Delivered:
+			return ">>"
+		case .Failed:
+			return "!"
+		case .None, .Read:
+			return ""
+		}
+	}
+	return ""
+}
+
+message_id_hex_short :: proc(id: [lxmf.MESSAGE_ID_LEN]u8, allocator := context.temp_allocator) -> string {
+	return fmt.aprintf("%02x%02x%02x%02x", id[0], id[1], id[2], id[3], allocator = allocator)
 }
 
 truncate :: proc(s: string, max_len: int) -> string {

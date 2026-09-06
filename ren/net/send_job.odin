@@ -55,6 +55,9 @@ Send_Job :: struct {
 	path_retried:    bool,
 	path_refreshed:  bool,
 	persisted_out:   bool,
+	reply_to:        [lxmf.MESSAGE_ID_LEN]u8,
+	has_reply_to:    bool,
+	stored_idx:      int,
 	retry_at:        time.Tick,
 	status:          string,
 	conversations:   ^store.Conversations,
@@ -104,6 +107,7 @@ send_fail :: proc(s: ^Session, msg: string) {
 	s.send.done = true
 	s.send.active = false
 	s.send.phase = .Idle
+	send_mark_stored_state(s, .Failed)
 	lxmf.stamp_gen_cancel(&s.send.stamp_gen)
 	if s.send.link != 0 {
 		send_link_close(s, s.send.link)
@@ -219,6 +223,17 @@ send_encrypt :: proc(s: ^Session, dest: []u8, plaintext: []u8) -> ([]u8, bool) {
 	return out, true
 }
 
+// Attach the LXMF thread field so receivers can thread the reply. Must run
+// before message_assign_id / message_pack since fields feed the message id hash.
+@(private)
+send_attach_reply_to :: proc(s: ^Session, m: ^lxmf.Message) {
+	if !s.send.has_reply_to {
+		return
+	}
+	rt := s.send.reply_to
+	m.fields[lxmf.FIELD_THREAD] = lxmf.Value{kind = .Bin, bin = bytes_clone(rt[:])}
+}
+
 @(private)
 send_compose_with_stamp :: proc(s: ^Session, method: lxmf.Method, stamp: []u8) -> (lxmf.Message, bool) {
 	m: lxmf.Message
@@ -227,6 +242,7 @@ send_compose_with_stamp :: proc(s: ^Session, method: lxmf.Method, stamp: []u8) -
 	m.title = strings.clone(s.send.title)
 	m.content = strings.clone(s.send.content)
 	m.method = method
+	send_attach_reply_to(s, &m)
 	if len(stamp) > 0 {
 		m.stamp = bytes_clone(stamp)
 	}
@@ -320,6 +336,7 @@ send_start_stamping :: proc(s: ^Session) -> bool {
 	m.title = strings.clone(s.send.title)
 	m.content = strings.clone(s.send.content)
 	m.method = s.send.method
+	send_attach_reply_to(s, &m)
 	if !lxmf.message_assign_id(&m, &s.router.material) {
 		return false
 	}
@@ -361,6 +378,7 @@ session_send_begin :: proc(
 	directory: ^store.Directory,
 	cfg: ^store.Config = nil,
 	method: lxmf.Method = .Direct,
+	reply_to: [lxmf.MESSAGE_ID_LEN]u8 = {},
 ) -> bool {
 	if !s.started {
 		session_event_push(s, .Send_Failed, "offline")
@@ -399,6 +417,9 @@ session_send_begin :: proc(
 	s.send.directory = directory
 	s.send.cfg = cfg
 	s.send.method = use_method
+	s.send.reply_to = reply_to
+	s.send.has_reply_to = reply_to != {}
+	s.send.stored_idx = -1
 	s.send.try_fail_over = cfg != nil && cfg.try_propagation_on_fail && cfg.has_propagation_node
 	s.send.failed_over = false
 	s.send.deadline = time.tick_add(time.tick_now(), time.Duration(constants.LINK_TIMEOUT_SEC * 2) * time.Second)
@@ -503,11 +524,30 @@ send_persist_out :: proc(s: ^Session) {
 		verified = true,
 		stamped = s.send.stamped,
 		hops = store.directory_hops(s.send.directory, s.send.dest),
+		state = .Sending,
+		reply_to = s.send.reply_to,
+		has_reply_to = s.send.has_reply_to,
 	}
 	if s.send.cfg != nil {
 		store.conversations_add_message_persist(s.send.conversations, s.send.cfg, s.send.dest, stored, label)
 	} else {
 		store.conversations_add_message(s.send.conversations, s.send.dest, stored, label)
+	}
+	// The message id is assigned later (after stamping). Remember the slot so
+	// state updates can patch id and state together.
+	s.send.stored_idx = store.conversations_message_count(s.send.conversations, s.send.dest) - 1
+}
+
+// Flip the persisted outbound message to a new delivery state and save.
+@(private)
+send_mark_stored_state :: proc(s: ^Session, state: store.Message_State) {
+	if s.send.conversations == nil || s.send.stored_idx < 0 {
+		return
+	}
+	if store.conversations_update_message_at(s.send.conversations, s.send.dest, s.send.stored_idx, s.send.message_id, state) {
+		if s.send.cfg != nil {
+			_ = store.conversations_save_peer(s.send.conversations, s.send.cfg, s.send.dest)
+		}
 	}
 }
 
@@ -517,6 +557,12 @@ send_complete_ok :: proc(s: ^Session) {
 		send_persist_out(s)
 		s.send.persisted_out = true
 	}
+	// Direct sends ride a reliable link, so a successful link send means the
+	// peer stack acknowledged receipt. Opportunistic and propagated sends are
+	// fire-and-forget into the network, so they stop at Sent until a proof or
+	// reply can confirm delivery.
+	state := store.Message_State.Delivered if s.send.method == .Direct else store.Message_State.Sent
+	send_mark_stored_state(s, state)
 	session_event_push(s, .Send_Ok)
 	if s.started && s.delivery_dest != 0 {
 		session_announce(s)

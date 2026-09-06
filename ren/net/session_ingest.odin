@@ -205,6 +205,14 @@ session_store_inbound :: proc(
 		verified = msg.signature_ok,
 		stamped = len(msg.stamp) > 0,
 		hops = store.directory_hops(directory, msg.source_hash),
+		state = .Delivered,
+	}
+	// LXMF FIELD_THREAD carries the parent message id for replies.
+	if fv, ok := msg.fields[lxmf.FIELD_THREAD]; ok {
+		if b, bok := lxmf.as_bytes(fv); bok && len(b) == lxmf.MESSAGE_ID_LEN {
+			copy(stored.reply_to[:], b)
+			stored.has_reply_to = true
+		}
 	}
 	if cfg != nil {
 		store.conversations_add_message_persist(conversations, cfg, msg.source_hash, stored, label)

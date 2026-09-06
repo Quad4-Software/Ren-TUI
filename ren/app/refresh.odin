@@ -72,6 +72,8 @@ conv_scroll_to_latest :: proc(a: ^App) {
 	n := len(a.conversations.items[idx].messages)
 	visible := max(1, a.detail_rect.h / 3)
 	a.msg_scroll = max(0, n - visible)
+	// -1 means reply selection follows the latest message.
+	a.msg_sel = -1
 }
 
 refresh_conv_list :: proc(a: ^App) {

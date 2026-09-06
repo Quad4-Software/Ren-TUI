@@ -47,19 +47,34 @@ Conversation :: struct {
 	unread:      int,
 }
 
+// Delivery state for a stored message. None means unknown (older files or inbound
+// before read tracking). Outbound goes Sending -> Sent/Delivered or Failed.
+// Inbound stays Delivered until the conversation is read, then Read.
+Message_State :: enum u8 {
+	None,
+	Sending,
+	Sent,
+	Delivered,
+	Failed,
+	Read,
+}
+
 Stored_Message :: struct {
 	id:        [lxmf.MESSAGE_ID_LEN]u8,
 	direction: enum {
 		In,
 		Out,
 	},
-	title:     string,
-	content:   string,
-	timestamp: f64,
-	method:    lxmf.Method,
-	verified:  bool,
-	stamped:   bool,
-	hops:      u8,
+	title:        string,
+	content:      string,
+	timestamp:    f64,
+	method:       lxmf.Method,
+	verified:     bool,
+	stamped:      bool,
+	hops:         u8,
+	state:        Message_State,
+	reply_to:     [lxmf.MESSAGE_ID_LEN]u8,
+	has_reply_to: bool,
 }
 
 Config :: struct {
@@ -833,11 +848,80 @@ conversations_clear_unread :: proc(c: ^Conversations, peer: [HASH_LEN]u8) -> boo
 	if idx < 0 {
 		return false
 	}
+	// Mark inbound messages read even when unread is already 0 so state stays
+	// consistent after reloads of older files.
+	changed := false
+	for &m in c.items[idx].messages {
+		if m.direction == .In && m.state != .Read {
+			m.state = .Read
+			changed = true
+		}
+	}
 	if c.items[idx].unread == 0 {
-		return false
+		return changed
 	}
 	c.items[idx].unread = 0
 	return true
+}
+
+conversations_message_count :: proc(c: ^Conversations, peer: [HASH_LEN]u8) -> int {
+	idx := conversations_index_of(c, peer)
+	if idx < 0 {
+		return -1
+	}
+	return len(c.items[idx].messages)
+}
+
+// Update a message by position. Used by the send job which appends the message
+// before the LXMF message id is known, so it also patches the id once assigned.
+conversations_update_message_at :: proc(
+	c: ^Conversations,
+	peer: [HASH_LEN]u8,
+	msg_idx: int,
+	id: [lxmf.MESSAGE_ID_LEN]u8,
+	state: Message_State,
+) -> bool {
+	idx := conversations_index_of(c, peer)
+	if idx < 0 {
+		return false
+	}
+	msgs := c.items[idx].messages
+	if msg_idx < 0 || msg_idx >= len(msgs) {
+		return false
+	}
+	changed := false
+	if id != {} && msgs[msg_idx].id != id {
+		msgs[msg_idx].id = id
+		changed = true
+	}
+	if msgs[msg_idx].state != state {
+		msgs[msg_idx].state = state
+		changed = true
+	}
+	return changed
+}
+
+// Update delivery state of one stored message by id. Returns true on change.
+conversations_set_message_state :: proc(
+	c: ^Conversations,
+	peer: [HASH_LEN]u8,
+	id: [lxmf.MESSAGE_ID_LEN]u8,
+	state: Message_State,
+) -> bool {
+	idx := conversations_index_of(c, peer)
+	if idx < 0 {
+		return false
+	}
+	for &m in c.items[idx].messages {
+		if m.id == id {
+			if m.state == state {
+				return false
+			}
+			m.state = state
+			return true
+		}
+	}
+	return false
 }
 
 conversations_set_custom_name :: proc(c: ^Conversations, peer: [HASH_LEN]u8, name: string) -> bool {
