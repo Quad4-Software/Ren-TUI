@@ -8,6 +8,13 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 - Add `ren-listen --server` to host static NomadNet-compatible pages and files
 - Expand the in-app guide with the new page/file server workflow
 - `?` key opens the in-app guide from any tab; guide header shows the help shortcut
+- Interface diagnostics panel with interface stats and a path table
+- Conversation per-message delivery state (Sending, Sent, Delivered, Failed, Read) and reply threading
+- Propagation node dashboard with active node, sync status, and node selection
+- Unified search overlay (Ctrl+F) across conversations, peers, pages, and files
+- Micron page editor with live preview and new-page creation
+- Page and file server management tab with rescan, remove, and hit counts
+- Offline page/file cache with caps and eviction
 - Stop committing librns binaries; build from RNS_REF via ensure-librns (CI, Docker, local)
 - Use golang bookworm image for Debian Docker librns stage (not alpine)
 - Rebuild vendored librns.so with zig for glibc 2.35 (drop GLIBC_2.38) so Ubuntu 22.04 and Debian Docker link
