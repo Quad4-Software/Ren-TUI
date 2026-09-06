@@ -24,6 +24,7 @@ refresh_lists :: proc(a: ^App) {
 	refresh_iface_cache(a)
 	refresh_path_cache(a)
 	refresh_config_list(a)
+	refresh_server_list(a)
 	a.ui_dirty = true
 }
 
@@ -595,6 +596,21 @@ path_expires_label :: proc(expires: f64, allocator := context.temp_allocator) ->
 		return fmt.aprintf("exp %dm", int(remain / 60), allocator = allocator)
 	}
 	return fmt.aprintf("exp %dh", int(remain / 3600), allocator = allocator)
+}
+
+refresh_server_list :: proc(a: ^App) {
+	prev_sel := a.server_list.selected
+	ui.list_clear(&a.server_list)
+	ps := &a.session.page_server
+	for item in ps.items {
+		line := fmt.tprintf("%s  %8s  hits=%d", item.request_path, format_byte_count(u64(item.size)), item.hits)
+		ui.list_push(&a.server_list, line)
+	}
+	if len(a.server_list.items) == 0 {
+		ui.list_push(&a.server_list, "no served pages/files")
+	}
+	a.server_list.selected = clamp(prev_sel, 0, len(a.server_list.items) - 1)
+	a.server_last = ps.served
 }
 
 mark_dirty :: proc(a: ^App) {

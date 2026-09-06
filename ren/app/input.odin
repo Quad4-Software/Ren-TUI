@@ -20,6 +20,9 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 	a := cast(^App)user
 	prev_ann := a.session.announces
 	net.session_poll(&a.session, &a.directory, &a.conversations, &a.cfg, a.cfg.auto_announce)
+	if a.tab == .Server && a.session.page_server.served != a.server_last {
+		refresh_server_list(a)
+	}
 	page_poll_result(a)
 	handle_session_events(a)
 	if a.session.announces > prev_ann {
@@ -249,6 +252,10 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 				refresh_config_list(a)
 			case '7':
 				switch_tab(a, .Guide)
+			case '8':
+			case 'S':
+				switch_tab(a, .Server)
+				refresh_server_list(a)
 			case '?':
 				switch_tab(a, .Guide)
 			case '/':
@@ -270,6 +277,12 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			case 'r', 'R':
 				if a.tab == .Conversations {
 					start_conv_rename(a)
+				} else if a.tab == .Server {
+					server_rescan(a)
+				}
+			case 'x', 'X':
+				if a.tab == .Server {
+					server_remove(a)
 				}
 			case 'l', 'L':
 				if a.tab == .Network {
@@ -308,7 +321,7 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 				if a.tab == .Page && !a.url_editing {
 					page_edit_try_start(a)
 				}
-			case 's', 'S':
+			case 's':
 				if a.tab == .Page {
 					page_toggle_raw(a)
 				}
@@ -352,6 +365,8 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			refresh_conv_list(a)
 		case .Config:
 			refresh_config_list(a)
+		case .Server:
+			refresh_server_list(a)
 		case .Page, .Interfaces, .Compose, .Guide:
 		}
 		return false
@@ -368,6 +383,8 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			refresh_conv_list(a)
 		case .Config:
 			refresh_config_list(a)
+		case .Server:
+			refresh_server_list(a)
 		case .Page, .Interfaces, .Compose, .Guide:
 		}
 		return false
@@ -465,6 +482,17 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		} else if ev.kind == .Enter {
 			config_activate(a)
 		}
+	case .Server:
+		visible := max(1, a.list_rect.h)
+		if ev.kind == .Up {
+			ui.list_move(&a.server_list, -1, visible)
+		} else if ev.kind == .Down {
+			ui.list_move(&a.server_list, 1, visible)
+		} else if ev.kind == .Page_Up {
+			ui.list_move(&a.server_list, -visible, visible)
+		} else if ev.kind == .Page_Down {
+			ui.list_move(&a.server_list, visible, visible)
+		}
 	case .Guide:
 		if ev.kind == .Up {
 			a.guide_scroll = max(0, a.guide_scroll - 1)
@@ -508,6 +536,8 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 			}
 		case .Config:
 			ui.list_move(&a.config_list, ev.mouse_scroll, max(1, a.list_rect.h))
+		case .Server:
+			ui.list_move(&a.server_list, ev.mouse_scroll, max(1, a.list_rect.h))
 		case .Guide:
 			a.guide_scroll = max(0, a.guide_scroll + ev.mouse_scroll)
 		case .Compose:
@@ -557,6 +587,8 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 			}
 		case .Config:
 			ui.list_click(&a.config_list, row, visible)
+		case .Server:
+			ui.list_click(&a.server_list, row, visible)
 		case .Interfaces, .Compose, .Guide, .Page:
 		}
 		return
@@ -650,6 +682,8 @@ click_tab :: proc(a: ^App, x: int) {
 				refresh_conv_list(a)
 			case .Config:
 				refresh_config_list(a)
+			case .Server:
+				refresh_server_list(a)
 			case .Page, .Interfaces, .Compose, .Guide:
 			}
 			return

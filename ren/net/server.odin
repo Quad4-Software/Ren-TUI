@@ -26,6 +26,13 @@ This node is now serving pages and files over Reticulum.
 NOT_FOUND_PAGE := transmute([]u8)string(">Not Found\n\nThe requested page was not found.\n")
 NOT_FOUND_FILE := transmute([]u8)string(">Not Found\n\nThe requested file was not found.\n")
 
+Served_Item :: struct {
+	request_path: string,
+	disk_path:    string,
+	size:         i64,
+	hits:         int,
+}
+
 Page_Server :: struct {
 	enabled:   bool,
 	node:      rns.Node,
@@ -33,6 +40,7 @@ Page_Server :: struct {
 	pages_dir: string,
 	files_dir: string,
 	served:    int,
+	items:     [dynamic]Served_Item,
 }
 
 page_server_init :: proc(s: ^Page_Server, node: rns.Node, dest: rns.Destination, cfg: ^store.Config, enabled: bool) -> bool {
@@ -48,6 +56,7 @@ page_server_init :: proc(s: ^Page_Server, node: rns.Node, dest: rns.Destination,
 	s.dest = dest
 	s.pages_dir, _ = filepath.join({cfg.data_dir, "pages"}, context.allocator)
 	s.files_dir, _ = filepath.join({cfg.data_dir, "files"}, context.allocator)
+	s.items = make([dynamic]Served_Item)
 
 	if err := os.make_directory_all(s.pages_dir); err != nil && !os.exists(s.pages_dir) {
 		return false
@@ -57,12 +66,13 @@ page_server_init :: proc(s: ^Page_Server, node: rns.Node, dest: rns.Destination,
 	}
 
 	page_server_ensure_defaults(s)
-	_ = page_server_register(s, dest, s.pages_dir, "/page/")
-	_ = page_server_register(s, dest, s.files_dir, "/file/")
+	_ = page_server_rescan(s)
 	return true
 }
 
 page_server_destroy :: proc(s: ^Page_Server) {
+	page_server_clear_items(s)
+	delete(s.items)
 	delete(s.pages_dir)
 	delete(s.files_dir)
 	s^ = {}
@@ -75,7 +85,26 @@ page_server_ensure_defaults :: proc(s: ^Page_Server) {
 	}
 }
 
-page_server_register :: proc(s: ^Page_Server, dest: rns.Destination, dir, prefix: string) -> int {
+page_server_clear_items :: proc(s: ^Page_Server) {
+	for &it in s.items {
+		delete(it.request_path)
+		delete(it.disk_path)
+	}
+	clear(&s.items)
+}
+
+page_server_rescan :: proc(s: ^Page_Server) -> int {
+	if !s.enabled || s.dest == 0 {
+		return 0
+	}
+	page_server_ensure_defaults(s)
+	page_server_clear_items(s)
+	count := page_server_register_dir(s, s.dest, s.pages_dir, "/page/")
+	count += page_server_register_dir(s, s.dest, s.files_dir, "/file/")
+	return count
+}
+
+page_server_register_dir :: proc(s: ^Page_Server, dest: rns.Destination, dir, prefix: string) -> int {
 	if !os.exists(dir) {
 		return 0
 	}
@@ -92,9 +121,17 @@ page_server_register :: proc(s: ^Page_Server, dest: rns.Destination, dir, prefix
 			continue
 		}
 		request_path := fmt.tprintf("%s%s", prefix, fi.name)
-		if rns.destination_register_request_handler(dest, request_path) == .Ok {
-			count += 1
+		if rns.destination_register_request_handler(dest, request_path) != .Ok {
+			continue
 		}
+		disk, _ := filepath.join({dir, fi.name}, context.allocator)
+		append(&s.items, Served_Item{
+			request_path = strings.clone(request_path, context.allocator),
+			disk_path    = disk,
+			size         = fi.size,
+			hits         = 0,
+		})
+		count += 1
 	}
 	return count
 }
@@ -131,7 +168,7 @@ page_server_serve :: proc(s: ^Page_Server, node: rns.Node, ev: ^rns.Event) -> bo
 		disk, ok := page_server_map(s.pages_dir, "/page/", path)
 		if !ok {
 			_ = rns.request_respond(node, req_id, NOT_FOUND_PAGE)
-			s.served += 1
+			page_server_record_hit(s, path)
 			return true
 		}
 		data, rerr := os.read_entire_file_from_path(disk, context.allocator)
@@ -141,7 +178,7 @@ page_server_serve :: proc(s: ^Page_Server, node: rns.Node, ev: ^rns.Event) -> bo
 			_ = rns.request_respond(node, req_id, data)
 			delete(data, context.allocator)
 		}
-		s.served += 1
+		page_server_record_hit(s, path)
 		return true
 	}
 
@@ -149,7 +186,7 @@ page_server_serve :: proc(s: ^Page_Server, node: rns.Node, ev: ^rns.Event) -> bo
 		disk, ok := page_server_map(s.files_dir, "/file/", path)
 		if !ok {
 			_ = rns.request_respond(node, req_id, NOT_FOUND_FILE)
-			s.served += 1
+			page_server_record_hit(s, path)
 			return true
 		}
 		data, rerr := os.read_entire_file_from_path(disk, context.allocator)
@@ -160,11 +197,36 @@ page_server_serve :: proc(s: ^Page_Server, node: rns.Node, ev: ^rns.Event) -> bo
 			_ = rns.request_respond_file(node, req_id, name, data)
 			delete(data, context.allocator)
 		}
-		s.served += 1
+		page_server_record_hit(s, path)
 		return true
 	}
 
 	_ = rns.request_respond(node, req_id, NOT_FOUND_PAGE)
+	page_server_record_hit(s, path)
+	return true
+}
+
+page_server_record_hit :: proc(s: ^Page_Server, request_path: string) {
+	s.served += 1
+	for &it in s.items {
+		if it.request_path == request_path {
+			it.hits += 1
+			return
+		}
+	}
+}
+
+page_server_remove :: proc(s: ^Page_Server, idx: int) -> bool {
+	if idx < 0 || idx >= len(s.items) {
+		return false
+	}
+	it := &s.items[idx]
+	if err := os.remove(it.disk_path); err != nil {
+		return false
+	}
+	delete(it.request_path)
+	delete(it.disk_path)
+	ordered_remove(&s.items, idx)
 	return true
 }
 

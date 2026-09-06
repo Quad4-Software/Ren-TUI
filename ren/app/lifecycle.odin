@@ -38,6 +38,7 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	ui.list_init(&a.conv_list)
 	ui.list_init(&a.net_list)
 	ui.list_init(&a.config_list)
+	ui.list_init(&a.server_list)
 	ui.input_init(&a.compose_to)
 	ui.input_init(&a.compose_body)
 	a.compose_method = a.cfg.send_method
@@ -112,6 +113,7 @@ app_close :: proc(a: ^App) {
 	ui.list_destroy(&a.conv_list)
 	ui.list_destroy(&a.net_list)
 	ui.list_destroy(&a.config_list)
+	ui.list_destroy(&a.server_list)
 	page_clear(a)
 	delete(a.page_edit_lines)
 	delete(a.page_hits)
@@ -234,6 +236,8 @@ footer_keybinds :: proc(a: ^App) -> string {
 		return "Tab fields  m method  Enter send"
 	case .Config:
 		return "Enter edit/toggle  Up/Dn"
+	case .Server:
+		return "r rescan  x delete  Up/Dn"
 	case .Guide:
 		return "Up/Dn scroll"
 	}

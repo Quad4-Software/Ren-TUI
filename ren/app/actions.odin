@@ -346,3 +346,32 @@ apply_prop_node_input :: proc(a: ^App) {
 	refresh_lists(a)
 	update_status(a)
 }
+
+server_rescan :: proc(a: ^App) {
+	if !a.session.page_server.enabled {
+		set_status(a, "page server is not enabled", STATUS_HOLD)
+		return
+	}
+	n := net.page_server_rescan(&a.session.page_server)
+	refresh_server_list(a)
+	set_status(a, fmt.tprintf("rescan: %d served", n), STATUS_HOLD)
+}
+
+server_remove :: proc(a: ^App) {
+	if !a.session.page_server.enabled {
+		set_status(a, "page server is not enabled", STATUS_HOLD)
+		return
+	}
+	idx := a.server_list.selected
+	if idx < 0 || idx >= len(a.session.page_server.items) {
+		set_status(a, "select a served item", STATUS_HOLD)
+		return
+	}
+	path := a.session.page_server.items[idx].request_path
+	if net.page_server_remove(&a.session.page_server, idx) {
+		refresh_server_list(a)
+		set_status(a, fmt.tprintf("removed %s", path), STATUS_HOLD)
+	} else {
+		set_status(a, "remove failed", STATUS_HOLD)
+	}
+}

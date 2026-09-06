@@ -24,6 +24,7 @@ Tab :: enum {
 	Compose,
 	Config,
 	Guide,
+	Server,
 }
 
 Net_View :: enum {
@@ -32,7 +33,7 @@ Net_View :: enum {
 	Propagation,
 }
 
-TAB_COUNT :: 7
+TAB_COUNT :: 8
 TAB_LABELS := [TAB_COUNT]string{
 	"Conversations",
 	"Network",
@@ -41,6 +42,7 @@ TAB_LABELS := [TAB_COUNT]string{
 	"Compose",
 	"Config",
 	"Guide",
+	"Server",
 }
 
 NET_VIEW_LABELS := [3]string{"LXMF", "NomadNet", "Propagation"}
@@ -78,6 +80,8 @@ App :: struct {
 	net_peer_idx:    [dynamic]int,
 	iface_scroll:    int,
 	config_list:     ui.List_State,
+	server_list:     ui.List_State,
+	server_last:     int,
 	compose_to:      ui.Input_State,
 	compose_body:    ui.Input_State,
 	compose_focus:   int,

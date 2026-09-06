@@ -21,7 +21,7 @@ import "ren:version"
 GUIDE_LINES := [?]string{
 	"Ren TUI",
 	"",
-	"Tabs 1-7  ? help  Ctrl+F search  Ctrl+R announce  Ctrl+Q quit",
+	"Tabs 1-8  ? help  Ctrl+F search  Ctrl+R announce  Ctrl+Q quit",
 	"Ctrl+R    announce now",
 	"Ctrl+Q    quit",
 	"",
@@ -76,6 +76,12 @@ GUIDE_LINES := [?]string{
 	"Up/Down list (opens latest)   click select   PgUp/PgDn messages",
 	"State: ... sending   > sent   >> delivered   ! failed",
 	"Names: custom > announce > hash   sorted by last activity",
+	"",
+	"Server",
+	"8/S       switch to Server tab",
+	"r         rescan data_dir/pages and data_dir/files",
+	"x         delete selected served file/page",
+	"Up/Down   select   details on the right",
 	"",
 	"Config ~/.config/ren-tui/config",
 	"obfuscate_hops = yes writes RNS local_hops_delta (off by default)",
@@ -138,6 +144,8 @@ draw_app :: proc(buf: ^ui.Buffer, user: rawptr) {
 		draw_config(a, buf, body)
 	case .Guide:
 		draw_guide(a, buf, body)
+	case .Server:
+		draw_server(a, buf, body)
 	}
 
 	if a.search_open {
@@ -892,6 +900,43 @@ draw_config :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		ui.buffer_text(buf, right.x + 1, y, "Enter apply   Esc cancel", t.muted, t.bg)
 	} else {
 		ui.buffer_text(buf, right.x + 1, y, "Enter edit/toggle   Restart Network Stack   Ctrl+R announce", t.muted, t.bg)
+	}
+}
+
+draw_server :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
+	if a.session.page_server.served != a.server_last {
+		refresh_server_list(a)
+	}
+	ui.draw_box(buf, r, "server", true)
+	inner := ui.rect_inset(r, 1)
+	left, right := ui.rect_split_vertical(inner, min(50, inner.w * 2 / 3))
+	a.list_rect = left
+	a.detail_rect = right
+	ui.draw_list(buf, left, &a.server_list)
+
+	t := ui.theme()
+	ui.buffer_fill_rect(buf, right.x, right.y, right.w, right.h, ' ', t.fg, t.bg)
+	if !a.session.page_server.enabled {
+		ui.buffer_text(buf, right.x + 1, right.y, "Page server is disabled. Run with --server to enable.", t.error, t.bg)
+		return
+	}
+	ps := &a.session.page_server
+	ui.buffer_text(buf, right.x + 1, right.y, fmt.tprintf("Total served: %d", ps.served), t.title, t.bg)
+	y := right.y + 2
+	idx := a.server_list.selected
+	if idx >= 0 && idx < len(ps.items) {
+		it := ps.items[idx]
+		ui.buffer_text(buf, right.x + 1, y, fmt.tprintf("request: %s", it.request_path), t.fg, t.bg)
+		y += 1
+		ui.buffer_text(buf, right.x + 1, y, fmt.tprintf("disk:    %s", it.disk_path), t.muted, t.bg)
+		y += 1
+		ui.buffer_text(buf, right.x + 1, y, fmt.tprintf("size:    %s", format_byte_count(u64(it.size))), t.fg, t.bg)
+		y += 1
+		ui.buffer_text(buf, right.x + 1, y, fmt.tprintf("hits:    %d", it.hits), t.fg, t.bg)
+		y += 2
+		ui.buffer_text(buf, right.x + 1, y, "r rescan   x delete", t.muted, t.bg)
+	} else {
+		ui.buffer_text(buf, right.x + 1, y, "r rescan", t.muted, t.bg)
 	}
 }
 
