@@ -220,7 +220,7 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		return false
 	}
 
-	if a.tab == .Page && !a.page_view_raw && !a.url_editing && a.page_field_focus >= 0 {
+	if a.tab == .Page && !a.page_view_raw && !a.url_editing && !a.page_cache_open && a.page_field_focus >= 0 {
 		fkind := a.page_form[a.page_field_focus].kind if a.page_field_focus < len(a.page_form) else micron.Field_Kind.None
 		if fkind == .Text || fkind == .None {
 			if page_field_edit_rune(a, ev) {
@@ -321,8 +321,12 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 				if a.tab == .Page && !a.url_editing {
 					page_edit_try_start(a)
 				}
+			case 'c', 'C':
+				if a.tab == .Page && !a.url_editing {
+					page_cache_toggle(a)
+				}
 			case 's':
-				if a.tab == .Page {
+				if a.tab == .Page && !a.page_cache_open {
 					page_toggle_raw(a)
 				}
 			case 'd', 'D':
@@ -335,13 +339,21 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 				}
 			case '[':
 				if a.tab == .Page {
-					a.page_scroll = max(0, a.page_scroll - 1)
+					if a.page_cache_open {
+						ui.list_move(&a.cache_list, -1, max(1, a.list_rect.h))
+					} else {
+						a.page_scroll = max(0, a.page_scroll - 1)
+					}
 				} else if a.tab == .Interfaces {
 					a.path_scroll = max(0, a.path_scroll - 1)
 				}
 			case ']':
 				if a.tab == .Page {
-					a.page_scroll += 1
+					if a.page_cache_open {
+						ui.list_move(&a.cache_list, 1, max(1, a.list_rect.h))
+					} else {
+						a.page_scroll += 1
+					}
 				} else if a.tab == .Interfaces {
 					a.path_scroll += 1
 				}
@@ -436,7 +448,22 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		}
 	case .Page:
 		visible := max(1, a.detail_rect.h)
-		if ev.kind == .Up || ev.kind == .Page_Up {
+		if a.page_cache_open {
+			cvis := max(1, a.list_rect.h)
+			if ev.kind == .Up {
+				ui.list_move(&a.cache_list, -1, cvis)
+			} else if ev.kind == .Down {
+				ui.list_move(&a.cache_list, 1, cvis)
+			} else if ev.kind == .Page_Up {
+				ui.list_move(&a.cache_list, -cvis, cvis)
+			} else if ev.kind == .Page_Down {
+				ui.list_move(&a.cache_list, cvis, cvis)
+			} else if ev.kind == .Enter {
+				page_cache_open_selected(a)
+			} else if ev.kind == .Esc {
+				page_cache_toggle(a)
+			}
+		} else if ev.kind == .Up || ev.kind == .Page_Up {
 			a.page_scroll = max(0, a.page_scroll - (visible if ev.kind == .Page_Up else 1))
 		} else if ev.kind == .Down || ev.kind == .Page_Down {
 			a.page_scroll += visible if ev.kind == .Page_Down else 1
@@ -519,7 +546,9 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 		case .Network:
 			network_move(a, ev.mouse_scroll, network_list_visible(a))
 		case .Page:
-			if a.page_editing {
+			if a.page_cache_open {
+				ui.list_move(&a.cache_list, ev.mouse_scroll, max(1, a.list_rect.h))
+			} else if a.page_editing {
 				if point_in_rect(ev.mouse_x, ev.mouse_y, a.page_edit_prev_rect) {
 					a.page_prev_scroll = clamp(a.page_prev_scroll + ev.mouse_scroll, 0, page_edit_preview_max_scroll(a))
 				} else {
@@ -589,11 +618,15 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 			ui.list_click(&a.config_list, row, visible)
 		case .Server:
 			ui.list_click(&a.server_list, row, visible)
-		case .Interfaces, .Compose, .Guide, .Page:
+		case .Page:
+			if a.page_cache_open {
+				ui.list_click(&a.cache_list, row, visible)
+			}
+		case .Interfaces, .Compose, .Guide:
 		}
 		return
 	}
-	if a.tab == .Page && !a.page_editing && point_in_rect(ev.mouse_x, ev.mouse_y, a.detail_rect) {
+	if a.tab == .Page && !a.page_editing && !a.page_cache_open && point_in_rect(ev.mouse_x, ev.mouse_y, a.detail_rect) {
 		_ = page_click_link_at(a, ev.mouse_x, ev.mouse_y)
 	}
 }

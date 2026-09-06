@@ -54,6 +54,12 @@ PAGE_MAX_LINES :: 2000
 PAGE_MAX_LINE_LEN :: 512
 FILE_MAX_BYTES :: 16 * 1024 * 1024
 
+// Offline page cache under download_dir (cache_ files plus a plaintext index)
+PAGE_CACHE_MAX_FILES :: 128
+PAGE_CACHE_MAX_BYTES :: 32 * 1024 * 1024
+PAGE_CACHE_INDEX_FILE :: "cache.index"
+PAGE_CACHE_PREFIX :: "cache_"
+
 // Path finder: keep recent destinations hot for link open
 PATH_CACHE_MAX :: 15
 PATH_TTL_SEC :: 90

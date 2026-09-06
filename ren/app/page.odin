@@ -192,6 +192,9 @@ page_fetch :: proc(
 	identify_after := false,
 ) {
 	if !a.online {
+		if page_cache_try_open(a, node, true, path) {
+			return
+		}
 		page_set_error(a, "offline")
 		set_status(a, "offline", STATUS_HOLD)
 		return
@@ -227,6 +230,9 @@ file_fetch :: proc(
 	req: micron.Request_Data = {},
 ) {
 	if !a.online {
+		if page_cache_report_file(a, node, path) {
+			return
+		}
 		set_status(a, "offline", STATUS_HOLD)
 		return
 	}
@@ -267,9 +273,16 @@ page_poll_result :: proc(a: ^App) {
 	if is_file {
 		defer delete(content)
 		if !ok {
+			if page_cache_report_file(a, node, path) {
+				return
+			}
 			msg := a.session.status if a.session.status != "" else "file download failed"
 			set_status(a, msg, STATUS_HOLD)
 			return
+		}
+		_ = store.page_cache_save(&a.cfg, node, path, content)
+		if a.page_cache_open {
+			page_cache_refresh(a)
 		}
 		name := net.file_basename_from_path(path)
 		dir := store.config_download_dir(&a.cfg)
@@ -284,6 +297,11 @@ page_poll_result :: proc(a: ^App) {
 		return
 	}
 	if !ok {
+		// Fall back to the on-disk cache: same node first, then any node.
+		if page_cache_try_open(a, node, true, path) || page_cache_try_open(a, {}, false, path) {
+			delete(content)
+			return
+		}
 		msg := a.session.status if a.session.status != "" else "page fetch failed"
 		a.page_node = node
 		a.page_has_node = true
@@ -297,6 +315,10 @@ page_poll_result :: proc(a: ^App) {
 		return
 	}
 	defer delete(content)
+	_ = store.page_cache_save(&a.cfg, node, path, content)
+	if a.page_cache_open {
+		page_cache_refresh(a)
+	}
 	page_apply_content(a, node, path, content)
 	switch_tab(a, .Page)
 	truncated := ""
@@ -375,22 +397,29 @@ page_apply_url_edit :: proc(a: ^App) {
 	defer if path != "" do delete(path)
 
 	node := hash
+	resolved := has_hash
 	if !has_hash {
 		if a.page_has_node {
 			node = a.page_node
+			resolved = true
 		} else {
 			row := a.net_list.selected
-			if row < 0 || row >= len(a.net_peer_idx) {
-				set_status(a, "select a NomadNet node first", STATUS_HOLD)
-				return
+			if row >= 0 && row < len(a.net_peer_idx) {
+				idx := a.net_peer_idx[row]
+				if idx >= 0 && idx < len(a.directory.peers) && a.directory.peers[idx].kind == .Nomad_Node {
+					node = a.directory.peers[idx].hash
+					resolved = true
+				}
 			}
-			idx := a.net_peer_idx[row]
-			if idx < 0 || idx >= len(a.directory.peers) || a.directory.peers[idx].kind != .Nomad_Node {
-				set_status(a, "select a NomadNet node first", STATUS_HOLD)
-				return
-			}
-			node = a.directory.peers[idx].hash
 		}
+	}
+	if !resolved {
+		// Path without a node hash: serve the newest cached copy if we have one.
+		if page_cache_try_open(a, {}, false, path) {
+			return
+		}
+		set_status(a, "select a NomadNet node first", STATUS_HOLD)
+		return
 	}
 	page_fetch(a, node, path, req)
 }
@@ -595,4 +624,94 @@ page_write_bytes :: proc(dir, filename: string, content: []u8, allocator := cont
 		return "", false
 	}
 	return final_path, true
+}
+
+// Open a cached page into the Page tab. When has_node is false the newest
+// cached copy of path across all nodes is used.
+page_cache_try_open :: proc(a: ^App, node: [store.HASH_LEN]u8, has_node: bool, path: string) -> bool {
+	e, ok := store.page_cache_match(&a.cfg, node, has_node, path)
+	if !ok {
+		return false
+	}
+	defer store.page_cache_entry_destroy(&e)
+	data, rok := store.page_cache_read(&a.cfg, e.file)
+	if !rok {
+		return false
+	}
+	defer delete(data)
+	page_apply_content(a, e.node, e.path, data)
+	switch_tab(a, .Page)
+	set_status(a, fmt.tprintf("cached %s", e.path), STATUS_HOLD)
+	return true
+}
+
+// For /file/ fetches we only report where the cached copy lives on disk.
+page_cache_report_file :: proc(a: ^App, node: [store.HASH_LEN]u8, path: string) -> bool {
+	e, ok := store.page_cache_match(&a.cfg, node, true, path)
+	if !ok {
+		e, ok = store.page_cache_match(&a.cfg, {}, false, path)
+	}
+	if !ok {
+		return false
+	}
+	defer store.page_cache_entry_destroy(&e)
+	disk := store.page_cache_file_path(&a.cfg, e.file, context.temp_allocator)
+	set_status(a, fmt.tprintf("cached copy: %s", disk), STATUS_HOLD)
+	return true
+}
+
+page_cache_view_clear :: proc(a: ^App) {
+	for &e in a.cache_entries {
+		delete(e.path)
+		delete(e.file)
+	}
+	delete(a.cache_entries)
+	a.cache_entries = nil
+	ui.list_clear(&a.cache_list)
+}
+
+page_cache_refresh :: proc(a: ^App) {
+	page_cache_view_clear(a)
+	a.cache_entries = store.page_cache_list(&a.cfg, context.allocator)
+	for e in a.cache_entries {
+		hex := store.hash_hex(e.node, context.temp_allocator)
+		h8 := hex
+		if len(h8) > 8 {
+			h8 = h8[:8]
+		}
+		ago := relative_time_ago(e.saved, context.temp_allocator)
+		if ago == "" {
+			ago = "-"
+		}
+		size := format_byte_count(u64(max(0, e.size)), context.temp_allocator)
+		ui.list_push(&a.cache_list, fmt.tprintf("%s  %-44s %8s  %s", h8, e.path, size, ago))
+	}
+}
+
+page_cache_toggle :: proc(a: ^App) {
+	if a.page_editing {
+		return
+	}
+	a.page_cache_open = !a.page_cache_open
+	if a.page_cache_open {
+		page_cache_refresh(a)
+		set_status(a, "page cache  Enter open  c/Esc close", STATUS_HOLD)
+	} else {
+		page_cache_view_clear(a)
+		set_status(a, "page cache closed", STATUS_HOLD)
+	}
+}
+
+page_cache_open_selected :: proc(a: ^App) {
+	row := a.cache_list.selected
+	if row < 0 || row >= len(a.cache_entries) {
+		return
+	}
+	node := a.cache_entries[row].node
+	path := strings.clone(a.cache_entries[row].path, context.temp_allocator)
+	a.page_cache_open = false
+	page_cache_view_clear(a)
+	if !page_cache_try_open(a, node, true, path) {
+		set_status(a, "cached copy missing", STATUS_HOLD)
+	}
 }

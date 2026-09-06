@@ -59,6 +59,7 @@ GUIDE_LINES := [?]string{
 	"e         edit local page (source over live preview)",
 	"N         create a new page under data_dir/pages",
 	"i         identify then reload page",
+	"c         page cache view (Enter opens offline copy)",
 	"Tab       cycle links/fields   Enter open/toggle",
 	"Space     toggle checkbox/radio   type to edit text",
 	"[ ]       scroll   PgUp/PgDn scroll   Esc back to Network",
@@ -96,6 +97,9 @@ GUIDE_LINES := [?]string{
 	"",
 	"Pages are display-only (no exec). Size capped.",
 	"/file/ downloads go to download_dir with footer progress.",
+	"Fetched pages/files cache under download_dir as cache_* files",
+	"with a cache.index (128 files / 32MB cap, oldest evicted).",
+	"Failed fetches and nodeless /path URLs fall back to the cache.",
 	"Click Your LXMF Address in Config to copy.",
 	"",
 	"Hosting pages and files",
@@ -501,6 +505,9 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	if a.page_editing {
 		mode = "edit"
 	}
+	if a.page_cache_open {
+		mode = "cache"
+	}
 	path := a.page_path if a.page_path != "" else "-"
 	hex := "-"
 	if a.page_has_node {
@@ -524,7 +531,9 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		inner.w,
 		max(0, inner.h - header_h - (3 if a.url_editing || a.page_naming else 0)),
 	}
-	if a.page_editing {
+	if a.page_cache_open {
+		draw_page_cache(a, buf, body)
+	} else if a.page_editing {
 		draw_page_edit(a, buf, body)
 	} else if net.session_page_busy(&a.session) {
 		draw_page_loading(a, buf, body)
@@ -554,6 +563,19 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	} else if a.page_naming {
 		edit_r := ui.Rect{inner.x, inner.y + inner.h - 3, inner.w, 3}
 		ui.draw_input(buf, edit_r, &a.page_new_name, "new page name (saved under data_dir/pages)", true)
+	}
+}
+
+// Cache sub-view of the Page tab: one row per cached fetch with node hash,
+// original path, size and age.
+draw_page_cache :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
+	t := ui.theme()
+	ui.buffer_text(buf, body.x + 1, body.y, "Page Cache   Enter open   c/Esc close", t.muted, t.bg)
+	lr := ui.Rect{body.x, body.y + 1, body.w, max(0, body.h - 1)}
+	a.list_rect = lr
+	ui.draw_list(buf, lr, &a.cache_list)
+	if len(a.cache_entries) == 0 && lr.h > 0 {
+		ui.buffer_text(buf, lr.x + 1, lr.y, "no cached pages yet", t.muted, t.bg)
 	}
 }
 

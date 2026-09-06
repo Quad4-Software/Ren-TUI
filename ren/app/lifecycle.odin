@@ -50,6 +50,8 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	ui.input_init(&a.conv_search)
 	ui.input_init(&a.prop_edit)
 	ui.input_init(&a.page_new_name)
+	ui.list_init(&a.cache_list)
+	a.cache_entries = make([dynamic]store.Page_Cache_Entry)
 	a.page_edit_lines = make([dynamic]ui.Input_State)
 	ui.input_init(&a.search_input)
 	ui.list_init(&a.search_list)
@@ -115,6 +117,8 @@ app_close :: proc(a: ^App) {
 	ui.list_destroy(&a.config_list)
 	ui.list_destroy(&a.server_list)
 	page_clear(a)
+	page_cache_view_clear(a)
+	ui.list_destroy(&a.cache_list)
 	delete(a.page_edit_lines)
 	delete(a.page_hits)
 	delete(a.page_form)
@@ -213,6 +217,9 @@ footer_keybinds :: proc(a: ^App) -> string {
 		if net.session_page_busy(&a.session) {
 			return "Esc cancel"
 		}
+		if a.page_cache_open {
+			return "c/Esc close  Enter open  Up/Dn"
+		}
 		if a.page_error != "" && a.page_source == "" {
 			return "g retry  Esc Network"
 		}
@@ -221,11 +228,11 @@ footer_keybinds :: proc(a: ^App) -> string {
 		}
 		if a.page_source != "" {
 			if page_is_local(a) {
-				return "g URL  e edit  N new  s source  d save  Tab focus"
+				return "g URL  c cache  e edit  N new  s source  d save  Tab focus"
 			}
-			return "g URL  N new  s source  d save  i id  Tab focus"
+			return "g URL  c cache  N new  s source  d save  i id  Tab focus"
 		}
-		return "g URL  N new  Esc Network"
+		return "g URL  c cache  N new  Esc Network"
 	case .Conversations:
 		return "r rename  Enter reply  ,/. msg  / search  u sync  Up/Dn list  PgUp/Dn"
 	case .Network:
