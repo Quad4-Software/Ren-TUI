@@ -400,7 +400,7 @@ draw_propagation_dashboard :: proc(a: ^App, buf: ^ui.Buffer, right: ui.Rect) {
 		buf,
 		right.x + 1,
 		y,
-		ui.truncate_runes(fmt.tprintf("Active: %s", active), right.w - 2),
+		ui.truncate_runes(fmt.tprintf("Prop node: %s", active), right.w - 2),
 		t.title,
 		t.bg,
 	)
