@@ -93,6 +93,21 @@ session_sync_status_line :: proc(s: ^Session, cfg: ^store.Config, allocator := c
 	return strings.clone("Idle", allocator)
 }
 
+session_sync_next_retry_line :: proc(s: ^Session, allocator := context.allocator) -> string {
+	if !s.sync.active || s.sync.done {
+		return ""
+	}
+	rem := time.tick_diff(time.tick_now(), s.sync.deadline)
+	if rem <= 0 {
+		return strings.clone("timeout", allocator)
+	}
+	return fmt.aprintf("%ds", int(rem / time.Second), allocator = allocator)
+}
+
+session_sync_queue_len :: proc(s: ^Session) -> int {
+	return 0
+}
+
 session_sync_cancel :: proc(s: ^Session) {
 	if s.sync.link != 0 {
 		_ = rns.link_close(s.sync.link)

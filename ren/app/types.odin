@@ -96,6 +96,8 @@ App :: struct {
 	net_searching:   bool,
 	conv_search:     ui.Input_State,
 	conv_searching:  bool,
+	prop_edit:       ui.Input_State,
+	prop_editing:    bool,
 	net_view:        Net_View,
 	ui_dirty:        bool,
 	guide_scroll:    int,

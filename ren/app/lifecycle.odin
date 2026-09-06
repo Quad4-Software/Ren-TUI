@@ -47,6 +47,7 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	ui.input_init(&a.url_edit)
 	ui.input_init(&a.net_search)
 	ui.input_init(&a.conv_search)
+	ui.input_init(&a.prop_edit)
 	a.page_hits = make([dynamic]micron.Link_Hit)
 	a.page_link_focus = -1
 	a.page_field_focus = -1
@@ -97,6 +98,7 @@ app_close :: proc(a: ^App) {
 	ui.input_destroy(&a.url_edit)
 	ui.input_destroy(&a.net_search)
 	ui.input_destroy(&a.conv_search)
+	ui.input_destroy(&a.prop_edit)
 	ui.list_destroy(&a.conv_list)
 	ui.list_destroy(&a.net_list)
 	ui.list_destroy(&a.config_list)

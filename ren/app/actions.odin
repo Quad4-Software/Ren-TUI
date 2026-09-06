@@ -20,10 +20,16 @@ import "ren:ui"
 try_fetch_selected_node :: proc(a: ^App) {
 	row := a.net_list.selected
 	if row < 0 || row >= len(a.net_peer_idx) {
+		if a.net_view == .Propagation && !a.cfg.has_propagation_node {
+			start_prop_node_input(a)
+		}
 		return
 	}
 	idx := a.net_peer_idx[row]
 	if idx < 0 || idx >= len(a.directory.peers) {
+		if a.net_view == .Propagation && !a.cfg.has_propagation_node {
+			start_prop_node_input(a)
+		}
 		return
 	}
 	peer := a.directory.peers[idx]
@@ -310,4 +316,33 @@ apply_conv_rename :: proc(a: ^App) {
 	} else {
 		set_status(a, "contact renamed", STATUS_HOLD)
 	}
+}
+
+start_prop_node_input :: proc(a: ^App) {
+	ui.input_clear(&a.prop_edit)
+	a.prop_editing = true
+	set_status(a, "enter 32-hex propagation node hash", STATUS_HOLD)
+}
+
+apply_prop_node_input :: proc(a: ^App) {
+	val := strings.trim_space(ui.input_value(&a.prop_edit))
+	a.prop_editing = false
+	ui.input_clear(&a.prop_edit)
+	if !lxmf.is_hex32(val) {
+		set_status(a, "need 32 hex digits", STATUS_HOLD)
+		return
+	}
+	hash, ok := lxmf.decode_hex32(val)
+	if !ok {
+		set_status(a, "bad propagation node hash", STATUS_HOLD)
+		return
+	}
+	store.config_set_propagation_node(&a.cfg, hash)
+	if store.config_save(&a.cfg) {
+		set_status(a, fmt.tprintf("propagation node set %s", val), STATUS_HOLD)
+	} else {
+		set_status(a, fmt.tprintf("propagation node set %s (save failed)", val), STATUS_HOLD)
+	}
+	refresh_lists(a)
+	update_status(a)
 }

@@ -28,7 +28,7 @@ GUIDE_LINES := [?]string{
 	"Network",
 	"l/n/p     LXMF / NomadNet / Propagation views",
 	"/         search peers",
-	"Enter     Nomad page, compose to LXMF, or set propagation node",
+	"Enter     Nomad page, compose to LXMF, set propagation node, or enter hash",
 	"u         sync with selected propagation node",
 	"i         identify to NomadNet node (needs active link)",
 	"Peers hot-capped; overflow in peers.msgpack",
@@ -37,9 +37,10 @@ GUIDE_LINES := [?]string{
 	"Up/Down scroll interface cards",
 	"[ ]       scroll path table (destination, via, hops, iface, age, expiry)",
 	"",
-	"Propagation",
-	"Select a node with Enter before Propagate send or sync",
-	"Detail panel shows selected node and sync status",
+	"Propagation dashboard",
+	"Active node at top; known nodes with hash, hops, last sync, state, queue",
+	"Enter     set selected node as active or enter a 32-hex hash",
+	"u         sync now with the active propagation node",
 	"",
 	"Compose",
 	"Tab       cycle to / method / message",
@@ -301,24 +302,132 @@ draw_network :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	stats := net.session_stats_line(&a.session, &a.directory, context.temp_allocator)
 	ui.buffer_text(buf, right.x + 1, right.y + 6, truncate(stats, right.w - 2), t.muted, t.bg)
 
-	y := right.y + 8
-	pn_label := store.config_propagation_label(&a.cfg, &a.directory, context.temp_allocator)
-	ui.buffer_text(buf, right.x + 1, y, truncate(fmt.tprintf("Prop node: %s", pn_label), right.w - 2), t.fg, t.bg)
-	y += 1
-	sync_line := net.session_sync_status_line(&a.session, &a.cfg, context.temp_allocator)
-	ui.buffer_text(buf, right.x + 1, y, truncate(fmt.tprintf("Sync: %s", sync_line), right.w - 2), t.muted, t.bg)
-	y += 2
+	if a.net_view == .Propagation {
+		draw_propagation_dashboard(a, buf, right)
+	} else {
+		y := right.y + 8
+		pn_label := store.config_propagation_label(&a.cfg, &a.directory, context.temp_allocator)
+		ui.buffer_text(buf, right.x + 1, y, truncate(fmt.tprintf("Prop node: %s", pn_label), right.w - 2), t.fg, t.bg)
+		y += 1
+		sync_line := net.session_sync_status_line(&a.session, &a.cfg, context.temp_allocator)
+		ui.buffer_text(buf, right.x + 1, y, truncate(fmt.tprintf("Sync: %s", sync_line), right.w - 2), t.muted, t.bg)
+		y += 2
+		ui.buffer_text(
+			buf,
+			right.x + 1,
+			y,
+			truncate(fmt.tprintf("show<=%d hot<=%d  cold peers.msgpack", ui.network_list_row_cap(max(1, left.h)), constants.PEERS_HOT_MAX), right.w - 2),
+			t.muted,
+			t.bg,
+		)
+	}
+	if a.prop_editing {
+		edit_r := ui.Rect{right.x, right.y + right.h - 3, right.w, 3}
+		ui.draw_input(buf, edit_r, &a.prop_edit, "propagation node hash", true)
+	} else if a.net_searching {
+		edit_r := ui.Rect{right.x, right.y + right.h - 3, right.w, 3}
+		ui.draw_input(buf, edit_r, &a.net_search, "search", true)
+	}
+}
+
+draw_propagation_dashboard :: proc(a: ^App, buf: ^ui.Buffer, right: ui.Rect) {
+	t := ui.theme()
+	y := right.y
+
+	active := store.config_propagation_label(&a.cfg, &a.directory, context.temp_allocator)
 	ui.buffer_text(
 		buf,
 		right.x + 1,
 		y,
-		truncate(fmt.tprintf("show<=%d hot<=%d  cold peers.msgpack", ui.network_list_row_cap(max(1, left.h)), constants.PEERS_HOT_MAX), right.w - 2),
-		t.muted,
+		ui.truncate_runes(fmt.tprintf("Active: %s", active), right.w - 2),
+		t.title,
 		t.bg,
 	)
-	if a.net_searching {
-		edit_r := ui.Rect{right.x, right.y + right.h - 3, right.w, 3}
-		ui.draw_input(buf, edit_r, &a.net_search, "search", true)
+	y += 2
+
+	if a.cfg.has_propagation_node {
+		sync := net.session_sync_status_line(&a.session, &a.cfg, context.temp_allocator)
+		ui.buffer_text(buf, right.x + 1, y, ui.truncate_runes(fmt.tprintf("Sync: %s", sync), right.w - 2), t.fg, t.bg)
+		y += 1
+
+		if a.session.sync.last_result != "" {
+			ui.buffer_text(
+				buf,
+				right.x + 1,
+				y,
+				ui.truncate_runes(fmt.tprintf("Last: %s", a.session.sync.last_result), right.w - 2),
+				t.muted,
+				t.bg,
+			)
+			y += 1
+		}
+
+		next := net.session_sync_next_retry_line(&a.session, context.temp_allocator)
+		if next != "" {
+			ui.buffer_text(buf, right.x + 1, y, ui.truncate_runes(fmt.tprintf("Next: %s", next), right.w - 2), t.muted, t.bg)
+			y += 1
+		}
+
+		queue := net.session_sync_queue_len(&a.session)
+		ui.buffer_text(buf, right.x + 1, y, ui.truncate_runes(fmt.tprintf("Queue: %d", queue), right.w - 2), t.muted, t.bg)
+		y += 1
+	} else {
+		ui.buffer_text(buf, right.x + 1, y, "No active propagation node", t.error, t.bg)
+		y += 1
+	}
+
+	if !a.prop_editing && !a.cfg.has_propagation_node {
+		ui.buffer_text(buf, right.x + 1, y, "Press Enter to enter a 32-hex hash", t.muted, t.bg)
+		y += 1
+	}
+
+	y += 1
+	if y >= right.y + right.h {
+		return
+	}
+	ui.buffer_text(buf, right.x + 1, y, "Known propagation nodes", t.title, t.bg)
+	y += 1
+	if y >= right.y + right.h {
+		return
+	}
+	header := "  hash                             hops last sync state           queue"
+	ui.buffer_text(buf, right.x + 1, y, ui.truncate_runes(header, right.w - 2), t.muted, t.bg)
+	y += 1
+
+	reserve := 3 if (a.prop_editing || a.net_searching) else 1
+	max_y := right.y + right.h - reserve
+	active_hash := a.cfg.propagation_node if a.cfg.has_propagation_node else {}
+
+	nodes := 0
+	for p in a.directory.peers {
+		if p.kind != .Propagation {
+			continue
+		}
+		nodes += 1
+		if y >= max_y {
+			break
+		}
+		mark := "*" if a.cfg.has_propagation_node && p.hash == active_hash else " "
+		hex := store.hash_hex(p.hash, context.temp_allocator)
+		hops := "?" if !p.hops_known || p.hops == 0 else fmt.tprintf("%d", p.hops)
+		last := relative_time_ago(p.last_heard, context.temp_allocator)
+		if last == "" {
+			last = "-"
+		}
+		state := "-"
+		queue := "-"
+		if a.cfg.has_propagation_node && p.hash == active_hash {
+			state = net.session_sync_status_line(&a.session, &a.cfg, context.temp_allocator)
+			queue = fmt.tprintf("%d", net.session_sync_queue_len(&a.session))
+		}
+		line := fmt.tprintf("%s%-32s %4s %9s %-15s %5s", mark, hex, hops, last, state, queue)
+		ui.buffer_text(buf, right.x + 1, y, ui.truncate_runes(line, right.w - 2), t.fg, t.bg)
+		y += 1
+	}
+	if nodes == 0 {
+		if y < max_y {
+			ui.buffer_text(buf, right.x + 1, y, "No propagation nodes in directory", t.muted, t.bg)
+		}
 	}
 }
 

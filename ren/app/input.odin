@@ -162,6 +162,20 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		return false
 	}
 
+	if a.prop_editing {
+		if ev.kind == .Esc {
+			a.prop_editing = false
+			ui.input_clear(&a.prop_edit)
+			return false
+		}
+		if ev.kind == .Enter {
+			apply_prop_node_input(a)
+			return false
+		}
+		_ = ui.input_handle(&a.prop_edit, ev)
+		return false
+	}
+
 	if net.session_page_busy(&a.session) && ev.kind == .Esc {
 		net.session_page_cancel(&a.session)
 		page_set_error(a, "page fetch cancelled")
