@@ -74,6 +74,12 @@ GUIDE_LINES := [?]string{
 	"Pages are display-only (no exec). Size capped.",
 	"/file/ downloads go to download_dir with footer progress.",
 	"Click Your LXMF Address in Config to copy.",
+	"",
+	"Hosting pages and files",
+	"Run `ren-listen --server` to serve data_dir/pages/ and data_dir/files/",
+	"Pages are served at hash:/page/name.mu  files at hash:/file/name",
+	"A default pages/index.mu is created on first start",
+	"Other NomadNet clients can browse and download from your node",
 }
 
 guide_lines :: proc() -> []string {
