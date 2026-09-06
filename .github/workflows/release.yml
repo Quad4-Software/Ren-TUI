@@ -41,14 +41,6 @@ jobs:
             runner: ubuntu-24.04
             libc: glibc
             cross: zig
-          - target: linux-armv7
-            runner: ubuntu-24.04
-            libc: glibc
-            cross: zig
-          - target: linux-armv6
-            runner: ubuntu-24.04
-            libc: glibc
-            cross: zig
           - target: darwin-arm64
             runner: macos-15
             libc: ""
