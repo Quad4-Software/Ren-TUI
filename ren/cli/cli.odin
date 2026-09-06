@@ -28,6 +28,7 @@ Options :: struct {
 	timeout_sec:         int,
 	listen_mode:         bool,
 	daemon:              bool,
+	server:              bool,
 }
 
 options_destroy :: proc(o: ^Options) {
@@ -97,7 +98,8 @@ Options:
   -h, --help              show this help
   -v, -V, --version       show version
       --paths             print resolved config paths and exit
-  -t, --timeout SECONDS   listen duration (default %d)
+  -t, --timeout SECONDS   listen duration (default %d, 0 = run forever with --server)
+      --server            serve pages and files as a nomadnetwork.node
   -c, --rns-config PATH   Reticulum config file
       --config PATH       app config file
       --data-dir PATH     data directory
@@ -169,6 +171,11 @@ parse_args :: proc(args: []string, listen_mode: bool) -> (opts: Options, err: st
 				return opts, "-d/--daemon is for ren-tui only"
 			}
 			opts.daemon = true
+		case "--server":
+			if !listen_mode {
+				return opts, fmt.tprintf("unknown option %s", a)
+			}
+			opts.server = true
 		case "-t", "--timeout":
 			if !listen_mode {
 				return opts, fmt.tprintf("unknown option %s", a)
@@ -178,7 +185,7 @@ parse_args :: proc(args: []string, listen_mode: bool) -> (opts: Options, err: st
 			}
 			i += 1
 			n, ok := strconv.parse_int(args[i])
-			if !ok || n <= 0 {
+			if !ok || n < 0 {
 				return opts, "bad -t/--timeout value"
 			}
 			opts.timeout_sec = n

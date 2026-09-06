@@ -104,8 +104,10 @@ session_handle_event :: proc(
 		session_store_inbound(s, &msg, directory, conversations, cfg)
 	case .Resource_Concluded:
 		session_ingest_link_payload(s, ev, directory, conversations, cfg)
+	case .Request_Incoming:
+		_ = page_server_serve(&s.page_server, s.node, ev)
 	case .Link_Established, .Link_Failed, .Link_Closed,
-	     .Request_Incoming, .Request_Response, .Request_Failed,
+	     .Request_Response, .Request_Failed,
 	     .Resource_Started, .None:
 	}
 }

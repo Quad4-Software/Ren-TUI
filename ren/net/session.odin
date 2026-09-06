@@ -40,10 +40,11 @@ Session :: struct {
 	send:           Send_Job,
 	send_transport: Send_Transport,
 	sync:           Sync_Job,
+	page_server:    Page_Server,
 	poll_buf:       []u8,
 }
 
-session_create :: proc(s: ^Session, cfg: ^store.Config, display_name: string) -> bool {
+session_create :: proc(s: ^Session, cfg: ^store.Config, display_name: string, serve: bool = false) -> bool {
 	s^ = {}
 	s.poll_buf = make([]u8, EVENT_APP_BUF_SIZE)
 	interval := cfg.announce_interval_sec
@@ -123,6 +124,11 @@ session_create :: proc(s: ^Session, cfg: ^store.Config, display_name: string) ->
 	ndest, nerr2 := rns.destination_create(s.node, s.rns_identity, "nomadnetwork", {"node"}, true)
 	if nerr2 == .Ok {
 		s.node_dest = ndest
+	}
+
+	if !page_server_init(&s.page_server, s.node, s.node_dest, cfg, serve) {
+		session_event_push(s, .Error, "page server init failed")
+		return false
 	}
 
 	return true
@@ -225,6 +231,7 @@ session_close :: proc(s: ^Session) {
 		_ = rns.node_destroy(s.node)
 	}
 	lxmf.router_destroy(&s.router)
+	page_server_destroy(&s.page_server)
 	delete(s.config_path)
 	session_event_ring_clear(&s.events)
 	delete(s.status)

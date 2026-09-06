@@ -54,7 +54,7 @@ main :: proc() {
 	store.conversations_init(&conversations)
 
 	exit_code := 0
-	if !net.session_create(&session, &cfg, cfg.display_name) {
+	if !net.session_create(&session, &cfg, cfg.display_name, opts.server) {
 		fmt.eprintf("session create failed: %s\n", session.status)
 		exit_code = 1
 	} else if !net.session_start(&session) {
@@ -65,9 +65,16 @@ main :: proc() {
 		fmt.printf("delivery  %s\n", hex)
 		fmt.printf("announced lxmf.delivery and nomadnetwork.node\n")
 
+		if opts.server {
+			fmt.println("page server enabled")
+			fmt.printf("pages     %s\n", session.page_server.pages_dir)
+			fmt.printf("files     %s\n", session.page_server.files_dir)
+		}
+
 		deadline := time.tick_add(time.tick_now(), time.Duration(opts.timeout_sec) * time.Second)
 		last_report := time.tick_now()
-		for time.tick_diff(time.tick_now(), deadline) > 0 {
+		infinite := opts.server && opts.timeout_sec == 0
+		for infinite || time.tick_diff(time.tick_now(), deadline) > 0 {
 			net.session_poll(&session, &directory, &conversations)
 			if time.tick_since(last_report) >= 2 * time.Second {
 				print_snapshot(&directory, &session)
@@ -78,13 +85,18 @@ main :: proc() {
 
 		fmt.println("--- final ---")
 		print_snapshot(&directory, &session)
-		lxmf_n := store.directory_count_kind(&directory, .Lxmf)
-		node_n := store.directory_count_kind(&directory, .Nomad_Node)
-		if lxmf_n == 0 && node_n == 0 {
-			fmt.eprintln("no lxmf.delivery or nomadnetwork.node announces heard")
-			exit_code = 1
-		} else {
+		if opts.server {
+			fmt.printf("served    %d\n", session.page_server.served)
 			fmt.println("ok")
+		} else {
+			lxmf_n := store.directory_count_kind(&directory, .Lxmf)
+			node_n := store.directory_count_kind(&directory, .Nomad_Node)
+			if lxmf_n == 0 && node_n == 0 {
+				fmt.eprintln("no lxmf.delivery or nomadnetwork.node announces heard")
+				exit_code = 1
+			} else {
+				fmt.println("ok")
+			}
 		}
 	}
 
