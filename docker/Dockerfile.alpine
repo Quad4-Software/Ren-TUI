@@ -11,7 +11,7 @@ ARG ALPINE_IMAGE=alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f
 
 FROM ${GOLANG_IMAGE} AS librns
 ARG RNS_REPO=https://github.com/Quad4-Software/Reticulum-Go.git
-ARG RNS_REF=v1.1.0
+ARG RNS_REF=v1.1.1
 
 RUN apk add --no-cache git gcc musl-dev binutils
 

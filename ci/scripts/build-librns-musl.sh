@@ -13,7 +13,7 @@ ci_load_env 2>/dev/null || true
 OUT_DIR=${OUT_DIR:-${ROOT}/vendor/librns/lib-musl}
 DEST=${RNS_ROOT:-${ROOT}/.deps/Reticulum-Go}
 REPO=${RNS_REPO:-https://github.com/Quad4-Software/Reticulum-Go.git}
-REF=${RNS_REF:-v1.1.0}
+REF=${RNS_REF:-v1.1.1}
 
 mkdir -p "${OUT_DIR}" "$(dirname "${DEST}")"
 

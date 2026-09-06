@@ -12,7 +12,7 @@ ci_load_env
 
 DEST=${RNS_ROOT:-${ROOT}/.deps/Reticulum-Go}
 REPO=${RNS_REPO:-https://github.com/Quad4-Software/Reticulum-Go.git}
-REF=${RNS_REF:-v1.1.0}
+REF=${RNS_REF:-v1.1.1}
 
 mkdir -p "$(dirname "${DEST}")"
 if [ -d "${DEST}/.git" ]; then

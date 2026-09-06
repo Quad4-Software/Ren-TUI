@@ -11,7 +11,7 @@
   gcc,
   version,
   src,
-  rnsRef ? "v1.1.0",
+  rnsRef ? "v1.1.1",
 }:
 
 let
@@ -19,7 +19,7 @@ let
     owner = "Quad4-Software";
     repo = "Reticulum-Go";
     rev = rnsRef;
-    hash = "sha256-FTh4ruhTrZOEiarj0QBi0+iupwzSE8Mkj6L2UQFs7Zo=";
+    hash = "sha256-YNEVf8nmqEE3jN37jS+oKwcvFKzIe8afr/tBrZPjGRQ=";
   };
 in
 stdenv.mkDerivation {

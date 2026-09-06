@@ -122,7 +122,7 @@ jobs:
             --target export \
             --build-arg ALPINE_IMAGE="${ALPINE_IMAGE}" \
             --build-arg GOLANG_IMAGE="${GOLANG_IMAGE:-golang:1.26-alpine}" \
-            --build-arg RNS_REF="${RNS_REF:-v1.1.0}" \
+            --build-arg RNS_REF="${RNS_REF:-v1.1.1}" \
             --build-arg ODIN_VERSION="${ODIN_VERSION}" \
             --build-arg ODIN_LINUX_AMD64_SHA256="${ODIN_LINUX_AMD64_SHA256}" \
             -o type=local,dest=./out-musl \
