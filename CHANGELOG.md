@@ -7,6 +7,7 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 - Pin Reticulum-Go to v1.1.1 and refresh Nix vendor hash
 - Add `ren-listen --server` to host static NomadNet-compatible pages and files
 - Expand the in-app guide with the new page/file server workflow
+- `?` key opens the in-app guide from any tab; guide header shows the help shortcut
 - Stop committing librns binaries; build from RNS_REF via ensure-librns (CI, Docker, local)
 - Use golang bookworm image for Debian Docker librns stage (not alpine)
 - Rebuild vendored librns.so with zig for glibc 2.35 (drop GLIBC_2.38) so Ubuntu 22.04 and Debian Docker link

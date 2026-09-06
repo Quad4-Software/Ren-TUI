@@ -21,7 +21,7 @@ import "ren:version"
 GUIDE_LINES := [?]string{
 	"Ren TUI",
 	"",
-	"Tabs 1-7  Conversations Network Page Interfaces Compose Config Guide",
+	"Tabs 1-7  ? help  Ctrl+R announce  Ctrl+Q quit",
 	"Ctrl+R    announce now",
 	"Ctrl+Q    quit",
 	"",

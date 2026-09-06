@@ -198,6 +198,8 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 				refresh_config_list(a)
 			case '7':
 				switch_tab(a, .Guide)
+			case '?':
+				switch_tab(a, .Guide)
 			case '/':
 				if a.tab == .Network {
 					a.net_searching = true
