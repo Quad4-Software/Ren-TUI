@@ -306,21 +306,7 @@ search_show_peer :: proc(a: ^App, hash: [store.HASH_LEN]u8) {
 }
 
 search_open_local_page :: proc(a: ^App, disk, req: string) {
-	data, err := os.read_entire_file_from_path(disk, context.allocator)
-	if err != nil {
-		set_status(a, "cannot open page file", STATUS_HOLD)
-		return
-	}
-	defer delete(data)
-	page_clear(a)
-	a.page_path = strings.clone(req)
-	a.page_source = page_sanitize_bytes(data)
-	a.page_doc = micron.parse(a.page_source)
-	a.page_link_focus = 0 if a.page_doc.link_count > 0 else -1
-	page_form_init_from_doc(a)
-	a.page_has_node = false
-	switch_tab(a, .Page)
-	set_status(a, fmt.tprintf("local page %s", req), STATUS_HOLD)
+	page_open_local_file(a, disk, req)
 }
 
 // Local served files are already on disk. Copy into download_dir so the user

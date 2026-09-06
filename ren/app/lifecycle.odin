@@ -48,6 +48,8 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	ui.input_init(&a.net_search)
 	ui.input_init(&a.conv_search)
 	ui.input_init(&a.prop_edit)
+	ui.input_init(&a.page_new_name)
+	a.page_edit_lines = make([dynamic]ui.Input_State)
 	ui.input_init(&a.search_input)
 	ui.list_init(&a.search_list)
 	a.search_results = make([dynamic]Search_Result)
@@ -102,6 +104,7 @@ app_close :: proc(a: ^App) {
 	ui.input_destroy(&a.net_search)
 	ui.input_destroy(&a.conv_search)
 	ui.input_destroy(&a.prop_edit)
+	ui.input_destroy(&a.page_new_name)
 	search_clear_results(a)
 	delete(a.search_results)
 	ui.list_destroy(&a.search_list)
@@ -110,6 +113,7 @@ app_close :: proc(a: ^App) {
 	ui.list_destroy(&a.net_list)
 	ui.list_destroy(&a.config_list)
 	page_clear(a)
+	delete(a.page_edit_lines)
 	delete(a.page_hits)
 	delete(a.page_form)
 	delete(a.conv_peer_idx)
@@ -210,10 +214,16 @@ footer_keybinds :: proc(a: ^App) -> string {
 		if a.page_error != "" && a.page_source == "" {
 			return "g retry  Esc Network"
 		}
-		if a.page_source != "" {
-			return "g URL  s source  d save  i id  Tab focus"
+		if a.page_editing {
+			return "Ctrl+S save  Tab preview  Esc done"
 		}
-		return "g URL  Esc Network"
+		if a.page_source != "" {
+			if page_is_local(a) {
+				return "g URL  e edit  N new  s source  d save  Tab focus"
+			}
+			return "g URL  N new  s source  d save  i id  Tab focus"
+		}
+		return "g URL  N new  Esc Network"
 	case .Conversations:
 		return "r rename  Enter reply  ,/. msg  / search  u sync  Up/Dn list  PgUp/Dn"
 	case .Network:

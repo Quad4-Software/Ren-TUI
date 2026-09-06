@@ -181,6 +181,25 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		return false
 	}
 
+	if a.page_naming {
+		if ev.kind == .Esc {
+			a.page_naming = false
+			ui.input_clear(&a.page_new_name)
+			return false
+		}
+		if ev.kind == .Enter {
+			page_new_apply(a)
+			return false
+		}
+		_ = ui.input_handle(&a.page_new_name, ev)
+		return false
+	}
+
+	if a.page_editing && a.tab == .Page {
+		page_edit_handle(a, ev)
+		return false
+	}
+
 	// Unified search opens from any tab except Compose. When another modal
 	// input is active the blocks above already returned, so Ctrl+F only fires
 	// from plain tab views.
@@ -263,6 +282,8 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 					a.net_view = .Nomad
 					a.net_filter_tick += 1
 					refresh_network_list_if_needed(a)
+				} else if a.tab == .Page && ev.ch == 'N' && !a.url_editing {
+					page_new_start(a)
 				}
 			case 'p', 'P':
 				if a.tab == .Network {
@@ -282,6 +303,10 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			case 'i', 'I':
 				if a.tab == .Network || a.tab == .Page {
 					try_identify_node(a)
+				}
+			case 'e', 'E':
+				if a.tab == .Page && !a.url_editing {
+					page_edit_try_start(a)
 				}
 			case 's', 'S':
 				if a.tab == .Page {
@@ -466,7 +491,15 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 		case .Network:
 			network_move(a, ev.mouse_scroll, network_list_visible(a))
 		case .Page:
-			a.page_scroll = max(0, a.page_scroll + ev.mouse_scroll)
+			if a.page_editing {
+				if point_in_rect(ev.mouse_x, ev.mouse_y, a.page_edit_prev_rect) {
+					a.page_prev_scroll = clamp(a.page_prev_scroll + ev.mouse_scroll, 0, page_edit_preview_max_scroll(a))
+				} else {
+					a.page_edit_scroll = max(0, a.page_edit_scroll + ev.mouse_scroll)
+				}
+			} else {
+				a.page_scroll = max(0, a.page_scroll + ev.mouse_scroll)
+			}
 		case .Interfaces:
 			if point_in_rect(ev.mouse_x, ev.mouse_y, a.detail_rect) {
 				a.path_scroll = max(0, a.path_scroll + ev.mouse_scroll)
@@ -528,7 +561,7 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 		}
 		return
 	}
-	if a.tab == .Page && point_in_rect(ev.mouse_x, ev.mouse_y, a.detail_rect) {
+	if a.tab == .Page && !a.page_editing && point_in_rect(ev.mouse_x, ev.mouse_y, a.detail_rect) {
 		_ = page_click_link_at(a, ev.mouse_x, ev.mouse_y)
 	}
 }

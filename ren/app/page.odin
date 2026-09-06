@@ -21,6 +21,9 @@ import "ren:store"
 import "ren:ui"
 
 page_clear :: proc(a: ^App) {
+	page_edit_reset(a)
+	delete(a.page_disk)
+	a.page_disk = ""
 	micron.doc_destroy(&a.page_doc)
 	clear(&a.page_hits)
 	a.page_link_focus = -1
@@ -496,6 +499,27 @@ page_click_link_at :: proc(a: ^App, x, y: int) -> bool {
 		}
 	}
 	return false
+}
+
+// Open a .mu file from local disk into the Page tab and remember its path so
+// the editor can save back to it. disk must outlive the call; it is cloned.
+page_open_local_file :: proc(a: ^App, disk, req: string) {
+	data, err := os.read_entire_file_from_path(disk, context.allocator)
+	if err != nil {
+		set_status(a, "cannot open page file", STATUS_HOLD)
+		return
+	}
+	defer delete(data)
+	page_clear(a)
+	a.page_path = strings.clone(req)
+	a.page_disk = strings.clone(disk)
+	a.page_source = page_sanitize_bytes(data)
+	a.page_doc = micron.parse(a.page_source)
+	a.page_link_focus = 0 if a.page_doc.link_count > 0 else -1
+	page_form_init_from_doc(a)
+	a.page_has_node = false
+	switch_tab(a, .Page)
+	set_status(a, fmt.tprintf("local page %s", req), STATUS_HOLD)
 }
 
 // Basename for saving a fetched page. Always ends with .mu when possible.

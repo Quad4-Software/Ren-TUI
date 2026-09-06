@@ -56,6 +56,8 @@ GUIDE_LINES := [?]string{
 	"g         open page URL (hash:/path or /path)",
 	"s         toggle rendered / raw source",
 	"d         download page to download_dir as *.mu",
+	"e         edit local page (source over live preview)",
+	"N         create a new page under data_dir/pages",
 	"i         identify then reload page",
 	"Tab       cycle links/fields   Enter open/toggle",
 	"Space     toggle checkbox/radio   type to edit text",
@@ -64,6 +66,9 @@ GUIDE_LINES := [?]string{
 	"Forms: <flags|name|value`data>  submit via [label`url`fields]",
 	"Dynamic: /page/x.mu`var=1|field.user=alice  or `user|*",
 	"Dangerous schemes blocked. External http shown only.",
+	"Editor: type to edit   Enter split line   Bksp/Del join lines",
+	"Up/Down move   PgUp/PgDn scroll   Tab focus preview   Ctrl+S save",
+	"Esc leaves edit mode. Only local pages (no remote node) can be edited.",
 	"",
 	"Conversations",
 	"r         rename contact   Enter reply   / search   u sync",
@@ -485,6 +490,9 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 
 	header_h := 1
 	mode := "RAW" if a.page_view_raw else "view"
+	if a.page_editing {
+		mode = "edit"
+	}
 	path := a.page_path if a.page_path != "" else "-"
 	hex := "-"
 	if a.page_has_node {
@@ -506,9 +514,11 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 		inner.x,
 		inner.y + header_h,
 		inner.w,
-		max(0, inner.h - header_h - (3 if a.url_editing else 0)),
+		max(0, inner.h - header_h - (3 if a.url_editing || a.page_naming else 0)),
 	}
-	if net.session_page_busy(&a.session) {
+	if a.page_editing {
+		draw_page_edit(a, buf, body)
+	} else if net.session_page_busy(&a.session) {
 		draw_page_loading(a, buf, body)
 	} else if a.page_error != "" && a.page_source == "" {
 		draw_page_fail(a, buf, body)
@@ -533,6 +543,57 @@ draw_page :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	if a.url_editing {
 		edit_r := ui.Rect{inner.x, inner.y + inner.h - 3, inner.w, 3}
 		ui.draw_input(buf, edit_r, &a.url_edit, "page URL", true)
+	} else if a.page_naming {
+		edit_r := ui.Rect{inner.x, inner.y + inner.h - 3, inner.w, 3}
+		ui.draw_input(buf, edit_r, &a.page_new_name, "new page name (saved under data_dir/pages)", true)
+	}
+}
+
+// Split view while editing: top pane is the raw Micron source, bottom pane is
+// a live rendered preview. Tab moves focus between the panes.
+draw_page_edit :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
+	t := ui.theme()
+	src_h := max(3, body.h / 2)
+	src, prev := ui.rect_split_horizontal(body, src_h)
+	ui.draw_box(buf, src, "source", a.page_edit_focus == 0)
+	ui.draw_box(buf, prev, "preview  (Tab focus)", a.page_edit_focus == 1)
+	src_in := ui.rect_inset(src, 1)
+	prev_in := ui.rect_inset(prev, 1)
+	a.page_edit_src_rect = src_in
+	a.page_edit_prev_rect = prev_in
+
+	page_edit_ensure_visible(a)
+	for row in 0 ..< max(0, src_in.h) {
+		idx := a.page_edit_scroll + row
+		y := src_in.y + row
+		cur_line := idx == a.page_edit_sel && a.page_edit_focus == 0
+		fg := t.fg
+		bg := t.bg
+		if cur_line {
+			bg = t.input_bg
+		}
+		ui.buffer_fill_rect(buf, src_in.x, y, src_in.w, 1, ' ', fg, bg)
+		if idx < 0 || idx >= len(a.page_edit_lines) {
+			continue
+		}
+		line := ui.input_value(&a.page_edit_lines[idx])
+		shown := ui.truncate_runes(line, src_in.w)
+		ui.buffer_text(buf, src_in.x, y, shown, fg, bg)
+		if cur_line {
+			cur := a.page_edit_lines[idx].cursor
+			cur = clamp(cur, 0, len(line))
+			cx := src_in.x + clamp(ui.string_cols(line[:cur]), 0, max(0, src_in.w - 1))
+			ui.buffer_put(buf, cx, y, ui.caps_cursor_glyph(), t.accent, bg)
+		}
+	}
+	if len(a.page_edit_lines) == 0 && src_in.h > 0 {
+		ui.buffer_text(buf, src_in.x + 1, src_in.y, "empty page  Enter adds a line", t.muted, t.bg)
+	}
+
+	if a.page_edit_doc_ok {
+		paint_doc(buf, prev_in, a.page_edit_doc, a.page_prev_scroll, -1, -1, nil)
+	} else {
+		ui.buffer_fill_rect(buf, prev_in.x, prev_in.y, prev_in.w, prev_in.h, ' ', t.fg, t.bg)
 	}
 }
 
