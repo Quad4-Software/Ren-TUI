@@ -33,6 +33,10 @@ GUIDE_LINES := [?]string{
 	"i         identify to NomadNet node (needs active link)",
 	"Peers hot-capped; overflow in peers.msgpack",
 	"",
+	"Interfaces",
+	"Up/Down scroll interface cards",
+	"[ ]       scroll path table (destination, via, hops, iface, age, expiry)",
+	"",
 	"Propagation",
 	"Select a node with Enter before Propagate send or sync",
 	"Detail panel shows selected node and sync status",
@@ -451,25 +455,47 @@ page_loading_spinner :: proc(ticks: u64) -> string {
 draw_interfaces :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	ui.draw_box(buf, r, "interfaces", true)
 	inner := ui.rect_inset(r, 1)
-	a.list_rect = inner
-	a.detail_rect = {}
+	t := ui.theme()
+
+	// Give the lower half to the path table when there is room for both.
+	path_h := 0
+	if inner.h >= 12 {
+		path_h = clamp(inner.h / 2, 5, inner.h - 6)
+	}
+	iface_area := inner
+	path_area := ui.Rect{}
+	if path_h > 0 {
+		iface_area, path_area = ui.rect_split_horizontal(inner, inner.h - path_h)
+	}
+	a.list_rect = iface_area
+	a.detail_rect = path_area
+
+	draw_iface_cards(a, buf, iface_area)
+	if path_h > 0 {
+		draw_path_table(a, buf, path_area)
+	} else {
+		ui.buffer_text(buf, inner.x + 1, inner.y + inner.h - 1, "[/] path table needs taller window", t.muted, t.bg)
+	}
+}
+
+draw_iface_cards :: proc(a: ^App, buf: ^ui.Buffer, area: ui.Rect) {
 	t := ui.theme()
 	if len(a.ifaces) == 0 {
-		ui.buffer_text(buf, inner.x + 1, inner.y, "No interfaces yet", t.muted, t.bg)
+		ui.buffer_text(buf, area.x + 1, area.y, "No interfaces yet", t.muted, t.bg)
 		return
 	}
 	card_h := 4
 	gap := 1
-	per_page := ui.iface_cards_per_page(inner.h)
+	per_page := ui.iface_cards_per_page(area.h)
 	if a.iface_scroll > max(0, len(a.ifaces) - per_page) {
 		a.iface_scroll = max(0, len(a.ifaces) - per_page)
 	}
-	y := inner.y
+	y := area.y
 	end := min(len(a.ifaces), a.iface_scroll + per_page)
 	for i in a.iface_scroll ..< end {
 		iface := a.ifaces[i]
-		box := ui.Rect{inner.x, y, inner.w, card_h}
-		if box.y + box.h > inner.y + inner.h {
+		box := ui.Rect{area.x, y, area.w, card_h}
+		if box.y + box.h > area.y + area.h {
 			break
 		}
 		online := iface.online
@@ -482,7 +508,61 @@ draw_interfaces :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
 	}
 	if len(a.ifaces) > per_page {
 		hint := fmt.tprintf("%d-%d / %d", a.iface_scroll + 1, end, len(a.ifaces))
-		ui.buffer_text(buf, inner.x + 1, inner.y + inner.h - 1, hint, t.muted, t.bg)
+		ui.buffer_text(buf, area.x + 1, area.y + area.h - 1, hint, t.muted, t.bg)
+	}
+}
+
+draw_path_table :: proc(a: ^App, buf: ^ui.Buffer, r: ui.Rect) {
+	title := fmt.tprintf("path table (%d)", len(a.paths)) if a.path_table_ok else "path table"
+	ui.draw_box(buf, r, title, true)
+	inner := ui.rect_inset(r, 1)
+	t := ui.theme()
+	if !a.path_table_ok {
+		ui.buffer_text(buf, inner.x + 1, inner.y, "Path table unavailable", t.muted, t.bg)
+		return
+	}
+	if len(a.paths) == 0 {
+		ui.buffer_text(buf, inner.x + 1, inner.y, "No known paths", t.muted, t.bg)
+		return
+	}
+	ui.buffer_text(buf, inner.x + 1, inner.y, truncate("destination                      via              h  iface       age", inner.w - 2), t.muted, t.bg)
+	rows := inner.h - 1
+	if len(a.paths) > rows {
+		rows -= 1 // keep the last line for the scroll hint
+	}
+	if rows <= 0 {
+		return
+	}
+	max_scroll := max(0, len(a.paths) - rows)
+	a.path_scroll = clamp(a.path_scroll, 0, max_scroll)
+	y := inner.y + 1
+	end := min(len(a.paths), a.path_scroll + rows)
+	for i in a.path_scroll ..< end {
+		p := a.paths[i]
+		dest := store.hash_hex(p.hash, context.temp_allocator)
+		via := "-"
+		if p.has_via {
+			v := store.hash_hex(p.via, context.temp_allocator)
+			via = v[:min(16, len(v))]
+		}
+		iface := p.iface if p.iface != "" else "-"
+		age := relative_time_ago(p.timestamp, context.temp_allocator)
+		if age == "" {
+			age = "-"
+		}
+		exp := path_expires_label(p.expires, context.temp_allocator)
+		line: string
+		if exp != "" {
+			line = fmt.tprintf("%-32s %-16s %-2d %-10s %-8s %s", dest, via, p.hops, iface, age, exp)
+		} else {
+			line = fmt.tprintf("%-32s %-16s %-2d %-10s %s", dest, via, p.hops, iface, age)
+		}
+		ui.buffer_text(buf, inner.x + 1, y, truncate(line, inner.w - 2), t.fg, t.bg)
+		y += 1
+	}
+	if len(a.paths) > rows {
+		hint := fmt.tprintf("%d-%d / %d  [/] scroll", a.path_scroll + 1, end, len(a.paths))
+		ui.buffer_text(buf, inner.x + 1, inner.y + inner.h - 1, truncate(hint, inner.w - 2), t.muted, t.bg)
 	}
 }
 

@@ -129,6 +129,9 @@ App :: struct {
 	last_announces:  int,
 	recv_count:      int,
 	ifaces:          [dynamic]Iface_View,
+	paths:           [dynamic]Path_View,
+	path_scroll:     int,
+	path_table_ok:   bool,
 	net_dir_rev:         u64,
 	net_filter_tick:     u64,
 	net_filter_applied:  u64,
@@ -148,6 +151,17 @@ Iface_View :: struct {
 	rx_packets: u64,
 	tx_packets: u64,
 	miss_count: int,
+}
+
+// Cached librns path table row. iface is heap allocated and owned by the view.
+Path_View :: struct {
+	hash:      [store.HASH_LEN]u8,
+	via:       [store.HASH_LEN]u8,
+	has_via:   bool,
+	hops:      u8,
+	iface:     string,
+	timestamp: f64,
+	expires:   f64,
 }
 
 Page_Form_Input :: struct {

@@ -22,6 +22,7 @@ refresh_lists :: proc(a: ^App) {
 	refresh_conv_list(a)
 	refresh_network_list_if_needed(a)
 	refresh_iface_cache(a)
+	refresh_path_cache(a)
 	refresh_config_list(a)
 	a.ui_dirty = true
 }
@@ -408,6 +409,44 @@ refresh_iface_cache :: proc(a: ^App) -> bool {
 	return changed
 }
 
+IFACE_PATH_SNAP_CAP :: 256
+
+// Rebuild the cached path table snapshot from librns. When the table is not
+// usable the cache is cleared and path_table_ok flips false.
+refresh_path_cache :: proc(a: ^App) -> bool {
+	infos: [IFACE_PATH_SNAP_CAP]net.Path_Info
+	n, ok := net.session_list_paths(&a.session, infos[:])
+	if !ok {
+		changed := a.path_table_ok || len(a.paths) > 0
+		clear_path_views(a)
+		a.path_table_ok = false
+		return changed
+	}
+	a.path_table_ok = true
+	clear_path_views(a)
+	for i in 0 ..< n {
+		e := infos[i]
+		append(&a.paths, Path_View{
+			hash = e.hash,
+			via = e.via,
+			has_via = e.has_via,
+			hops = e.hops,
+			iface = e.iface, // ownership moved into the view
+			timestamp = e.timestamp,
+			expires = e.expires,
+		})
+	}
+	return true
+}
+
+clear_path_views :: proc(a: ^App) {
+	for &p in a.paths {
+		delete(p.iface)
+		p.iface = ""
+	}
+	clear(&a.paths)
+}
+
 // Merge a non-empty iface poll into cache. Partial polls use miss grace instead of instant delete.
 // Order is stable by name so online flips do not reshuffle cards.
 apply_iface_infos :: proc(ifaces: ^[dynamic]Iface_View, infos: []net.Iface_Info) -> bool {
@@ -525,14 +564,35 @@ format_byte_count :: proc(n: u64, allocator := context.temp_allocator) -> string
 iface_stats_line :: proc(iface: Iface_View, allocator := context.temp_allocator) -> string {
 	state := "up" if iface.online else ("enabled" if iface.enabled else "down")
 	return fmt.aprintf(
-		"%-8s  rx=%s (%d)  tx=%s (%d)",
+		"%-7s on:%s en:%s  rx %s (%dp)  tx %s (%dp)",
 		state,
+		"yes" if iface.online else "no",
+		"yes" if iface.enabled else "no",
 		format_byte_count(iface.rx, allocator),
 		iface.rx_packets,
 		format_byte_count(iface.tx, allocator),
 		iface.tx_packets,
 		allocator = allocator,
 	)
+}
+
+// Seconds until a path table entry expires, or empty when unknown/already gone.
+path_expires_label :: proc(expires: f64, allocator := context.temp_allocator) -> string {
+	if expires <= 0 {
+		return ""
+	}
+	now := f64(time.time_to_unix_nano(time.now())) / 1e9
+	remain := expires - now
+	if remain <= 0 {
+		return "expired"
+	}
+	if remain < 90 {
+		return fmt.aprintf("exp %ds", int(remain), allocator = allocator)
+	}
+	if remain < 5400 {
+		return fmt.aprintf("exp %dm", int(remain / 60), allocator = allocator)
+	}
+	return fmt.aprintf("exp %dh", int(remain / 3600), allocator = allocator)
 }
 
 mark_dirty :: proc(a: ^App) {

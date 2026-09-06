@@ -7,6 +7,7 @@ Hot path cache and path discovery against librns path table.
 
 package net
 
+import "core:strings"
 import "core:time"
 
 import rns "rns:rns"
@@ -154,6 +155,52 @@ path_ensure :: proc(s: ^Session, dest: [store.HASH_LEN]u8, request_if_missing: b
 		_ = rns.path_request(s.node, dh[:])
 	}
 	return false, 0
+}
+
+// Snapshot row for the Interfaces tab path table. iface is heap cloned; the
+// caller owns it and must delete it.
+Path_Info :: struct {
+	hash:      [store.HASH_LEN]u8,
+	via:       [store.HASH_LEN]u8,
+	has_via:   bool,
+	hops:      u8,
+	iface:     string,
+	timestamp: f64,
+	expires:   f64,
+}
+
+// Fills out with librns path table rows. ok is false when the node is not
+// running or the path table is not usable.
+session_list_paths :: proc(s: ^Session, out: []Path_Info) -> (n: int, ok: bool) {
+	if !s.started || s.node == 0 || len(out) == 0 {
+		return 0, false
+	}
+	entries := make([]rns.Path_Entry, constants.PATH_TABLE_CAP, context.temp_allocator)
+	cnt, err := rns.path_table(s.node, entries)
+	if err != .Ok {
+		return 0, false
+	}
+	n = min(cnt, len(out))
+	for i in 0 ..< n {
+		e := entries[i]
+		info := Path_Info{
+			hops = e.hops,
+			iface = strings.clone(rns.cstring_field(e.iface[:])),
+			timestamp = e.timestamp,
+			expires = e.expires,
+		}
+		hl := min(int(e.hash_len), store.HASH_LEN)
+		if hl > 0 {
+			copy(info.hash[:hl], e.hash[:hl])
+		}
+		vl := min(int(e.via_len), store.HASH_LEN)
+		if vl > 0 {
+			copy(info.via[:vl], e.via[:vl])
+			info.has_via = true
+		}
+		out[i] = info
+	}
+	return n, true
 }
 
 path_request_refresh :: proc(s: ^Session, dest: [store.HASH_LEN]u8) {

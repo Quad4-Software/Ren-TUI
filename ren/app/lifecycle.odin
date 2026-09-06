@@ -54,6 +54,7 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	a.conv_peer_idx = make([dynamic]int)
 	a.net_peer_idx = make([dynamic]int)
 	a.ifaces = make([dynamic]Iface_View)
+	a.paths = make([dynamic]Path_View)
 	a.tab = .Network
 	a.net_view = .Nomad
 	a.ui_dirty = true
@@ -108,6 +109,8 @@ app_close :: proc(a: ^App) {
 		delete(iface.type_n)
 	}
 	delete(a.ifaces)
+	clear_path_views(a)
+	delete(a.paths)
 	store.conversations_destroy(&a.conversations)
 	store.directory_destroy(&a.directory)
 	ui.loop_close(&a.loop)
@@ -206,7 +209,7 @@ footer_keybinds :: proc(a: ^App) -> string {
 	case .Network:
 		return "l/n/p views  / search  Enter set/open  u sync"
 	case .Interfaces:
-		return "Up/Dn scroll"
+		return "Up/Dn cards  [/] paths"
 	case .Compose:
 		return "Tab fields  m method  Enter send"
 	case .Config:

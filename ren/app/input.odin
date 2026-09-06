@@ -43,10 +43,12 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 	if a.poll_ticks % 20 == 0 {
 		if a.tab == .Interfaces {
 			_ = refresh_iface_cache(a)
+			_ = refresh_path_cache(a)
 		}
 		mark_dirty(a)
 	} else if a.tab == .Interfaces && ev.kind != .None {
 		_ = refresh_iface_cache(a)
+		_ = refresh_path_cache(a)
 		mark_dirty(a)
 	}
 	update_status(a)
@@ -259,10 +261,14 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 			case '[':
 				if a.tab == .Page {
 					a.page_scroll = max(0, a.page_scroll - 1)
+				} else if a.tab == .Interfaces {
+					a.path_scroll = max(0, a.path_scroll - 1)
 				}
 			case ']':
 				if a.tab == .Page {
 					a.page_scroll += 1
+				} else if a.tab == .Interfaces {
+					a.path_scroll += 1
 				}
 			}
 			return false
@@ -414,7 +420,11 @@ handle_mouse :: proc(a: ^App, ev: ui.Event) {
 		case .Page:
 			a.page_scroll = max(0, a.page_scroll + ev.mouse_scroll)
 		case .Interfaces:
-			a.iface_scroll = max(0, a.iface_scroll + ev.mouse_scroll)
+			if point_in_rect(ev.mouse_x, ev.mouse_y, a.detail_rect) {
+				a.path_scroll = max(0, a.path_scroll + ev.mouse_scroll)
+			} else {
+				a.iface_scroll = max(0, a.iface_scroll + ev.mouse_scroll)
+			}
 		case .Config:
 			ui.list_move(&a.config_list, ev.mouse_scroll, max(1, a.list_rect.h))
 		case .Guide:
