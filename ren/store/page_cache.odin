@@ -167,28 +167,38 @@ page_cache_save :: proc(c: ^Config, node: [HASH_LEN]u8, path: string, data: []u8
 		_ = os.remove(tmp)
 		return false
 	}
-	entries := page_cache_index_read(c, context.temp_allocator)
+	entries := page_cache_index_read(c, context.allocator)
 	defer page_cache_entries_destroy(&entries)
-	kept := make([dynamic]Page_Cache_Entry, 0, len(entries) + 1, context.temp_allocator)
+	kept := make([dynamic]Page_Cache_Entry, 0, len(entries) + 1, context.allocator)
+	defer page_cache_entries_destroy(&kept)
 	for e in entries {
 		if e.file == name || (e.node == node && e.path == path) {
 			continue
 		}
-		append(&kept, e)
+		append(
+			&kept,
+			Page_Cache_Entry{
+				node = e.node,
+				path = strings.clone(e.path),
+				file = strings.clone(e.file),
+				size = e.size,
+				saved = e.saved,
+			},
+		)
 	}
 	append(
 		&kept,
 		Page_Cache_Entry{
 			node = node,
-			path = path,
-			file = name,
+			path = strings.clone(path),
+			file = strings.clone(name),
 			size = i64(len(data)),
 			saved = f64(time.time_to_unix_nano(time.now())) / 1e9,
 		},
 	)
-	_ = page_cache_index_write(c, kept[:])
+	ok := page_cache_index_write(c, kept[:])
 	page_cache_enforce(c)
-	return true
+	return ok
 }
 
 // Find a cached copy for a path. When has_node is false the newest copy from
@@ -206,7 +216,7 @@ page_cache_match :: proc(
 	if path == "" {
 		return {}, false
 	}
-	entries := page_cache_index_read(c, context.temp_allocator)
+	entries := page_cache_index_read(c, context.allocator)
 	defer page_cache_entries_destroy(&entries)
 	best := -1
 	for x, i in entries {
@@ -255,7 +265,7 @@ page_cache_read :: proc(c: ^Config, file: string, allocator := context.allocator
 
 // Delete oldest cached files until both caps are satisfied.
 page_cache_enforce :: proc(c: ^Config) {
-	entries := page_cache_index_read(c, context.temp_allocator)
+	entries := page_cache_index_read(c, context.allocator)
 	defer page_cache_entries_destroy(&entries)
 	total: i64 = 0
 	for e in entries {
