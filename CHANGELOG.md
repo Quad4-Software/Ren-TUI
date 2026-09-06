@@ -2,7 +2,9 @@
 
 New work goes under the [draft] section only. Do not edit [released] sections after a tag ships.
 
-## 0.3.0 - 2026-09-06 [unreleased]
+## 0.3.1 - [unreleased]
+
+## 0.3.0 - 2026-09-06
 
 - Pin Reticulum-Go to v1.1.1 and refresh Nix vendor hash
 - Add `ren-listen --server` to host static NomadNet-compatible pages and files
