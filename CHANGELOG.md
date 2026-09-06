@@ -4,6 +4,8 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 
 ## 0.3.1 - [unreleased]
 
+- Fix page cache allocator mismatch that caused SIGABRT when navigating to or rendering a fetched page
+
 ## 0.3.0 - 2026-09-06
 
 - Pin Reticulum-Go to v1.1.1 and refresh Nix vendor hash
