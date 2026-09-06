@@ -69,6 +69,11 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		return false
 	}
 
+	if a.search_open {
+		search_handle_event(a, ev)
+		return false
+	}
+
 	if a.config_editing {
 		if ev.kind == .Esc {
 			a.config_editing = false
@@ -176,6 +181,16 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 		return false
 	}
 
+	// Unified search opens from any tab except Compose. When another modal
+	// input is active the blocks above already returned, so Ctrl+F only fires
+	// from plain tab views.
+	if ev.kind == .Ctrl_F {
+		if a.tab != .Compose {
+			search_begin(a)
+		}
+		return false
+	}
+
 	if net.session_page_busy(&a.session) && ev.kind == .Esc {
 		net.session_page_cancel(&a.session)
 		page_set_error(a, "page fetch cancelled")
@@ -226,6 +241,8 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 					a.conv_replying = false
 					a.conv_reply_has = false
 					set_status(a, "search conversations  Enter done  Esc cancel", STATUS_HOLD)
+				} else {
+					search_begin(a)
 				}
 			case ',', '.':
 				if a.tab == .Conversations {
@@ -434,6 +451,10 @@ on_event :: proc(ev: ui.Event, user: rawptr) -> bool {
 }
 
 handle_mouse :: proc(a: ^App, ev: ui.Event) {
+	if a.search_open {
+		// Swallow clicks and scroll while the overlay owns the screen.
+		return
+	}
 	if ev.mouse_scroll != 0 {
 		switch a.tab {
 		case .Conversations:

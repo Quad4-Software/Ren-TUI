@@ -21,9 +21,14 @@ import "ren:version"
 GUIDE_LINES := [?]string{
 	"Ren TUI",
 	"",
-	"Tabs 1-7  ? help  Ctrl+R announce  Ctrl+Q quit",
+	"Tabs 1-7  ? help  Ctrl+F search  Ctrl+R announce  Ctrl+Q quit",
 	"Ctrl+R    announce now",
 	"Ctrl+Q    quit",
+	"",
+	"Search (Ctrl+F or / outside Network and Conversations)",
+	"Type to filter   Up/Down select   Enter open   Esc close",
+	"Sources: conversations + message text, peers, served pages",
+	"and files under data_dir, plus downloaded pages",
 	"",
 	"Network",
 	"l/n/p     LXMF / NomadNet / Propagation views",
@@ -128,6 +133,45 @@ draw_app :: proc(buf: ^ui.Buffer, user: rawptr) {
 		draw_config(a, buf, body)
 	case .Guide:
 		draw_guide(a, buf, body)
+	}
+
+	if a.search_open {
+		draw_search_overlay(a, buf, body)
+	}
+}
+
+draw_search_overlay :: proc(a: ^App, buf: ^ui.Buffer, body: ui.Rect) {
+	t := ui.theme()
+	w := min(body.w - 4, 78)
+	if w < 30 {
+		w = body.w
+	}
+	h := min(body.h - 2, 24)
+	if h < 8 {
+		h = body.h
+	}
+	px := body.x + max(0, (body.w - w) / 2)
+	py := body.y + max(0, (body.h - h) / 2)
+	panel := ui.Rect{px, py, w, h}
+	a.search_rect = panel
+	ui.buffer_fill_rect(buf, panel.x, panel.y, panel.w, panel.h, ' ', t.fg, t.bg)
+	ui.draw_box(buf, panel, "search", true)
+	inner := ui.rect_inset(panel, 1)
+	in_r := ui.Rect{inner.x, inner.y, inner.w, min(3, inner.h)}
+	ui.draw_input(buf, in_r, &a.search_input, "conversations peers pages files", true)
+	list_r := ui.Rect{inner.x, inner.y + in_r.h, inner.w, max(0, inner.h - in_r.h - 1)}
+	hint_r := ui.Rect{inner.x, inner.y + inner.h - 1, inner.w, 1}
+	a.search_list_rect = list_r
+	ui.draw_list(buf, list_r, &a.search_list)
+	if len(a.search_results) == 0 && list_r.h > 0 {
+		msg := "type to search"
+		if strings.trim_space(ui.input_value(&a.search_input)) != "" {
+			msg = "no matches"
+		}
+		ui.buffer_text(buf, list_r.x + 1, list_r.y, truncate(msg, list_r.w - 2), t.muted, t.bg)
+	}
+	if hint_r.h > 0 {
+		ui.buffer_text(buf, hint_r.x + 1, hint_r.y, truncate("Enter open   Esc close   Ctrl+F", hint_r.w - 2), t.muted, t.bg)
 	}
 }
 

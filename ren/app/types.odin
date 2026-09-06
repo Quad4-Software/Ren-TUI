@@ -96,6 +96,12 @@ App :: struct {
 	net_searching:   bool,
 	conv_search:     ui.Input_State,
 	conv_searching:  bool,
+	search_open:        bool,
+	search_input:       ui.Input_State,
+	search_list:        ui.List_State,
+	search_results:     [dynamic]Search_Result,
+	search_rect:        ui.Rect,
+	search_list_rect:   ui.Rect,
 	prop_edit:       ui.Input_State,
 	prop_editing:    bool,
 	net_view:        Net_View,
@@ -167,6 +173,23 @@ Path_View :: struct {
 	iface:     string,
 	timestamp: f64,
 	expires:   f64,
+}
+
+// One row in the unified search overlay. hash is set for conversation and
+// peer hits. disk/req are heap strings owned by the result for page and file
+// hits and are freed by search_clear_results.
+Search_Result_Kind :: enum {
+	Conversation,
+	Peer,
+	Page,
+	File,
+}
+
+Search_Result :: struct {
+	kind: Search_Result_Kind,
+	hash: [store.HASH_LEN]u8,
+	disk: string,
+	req:  string,
 }
 
 Page_Form_Input :: struct {

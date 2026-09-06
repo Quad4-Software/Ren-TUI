@@ -48,6 +48,9 @@ app_init :: proc(a: ^App, opts: ^cli.Options = nil) -> bool {
 	ui.input_init(&a.net_search)
 	ui.input_init(&a.conv_search)
 	ui.input_init(&a.prop_edit)
+	ui.input_init(&a.search_input)
+	ui.list_init(&a.search_list)
+	a.search_results = make([dynamic]Search_Result)
 	a.page_hits = make([dynamic]micron.Link_Hit)
 	a.page_link_focus = -1
 	a.page_field_focus = -1
@@ -99,6 +102,10 @@ app_close :: proc(a: ^App) {
 	ui.input_destroy(&a.net_search)
 	ui.input_destroy(&a.conv_search)
 	ui.input_destroy(&a.prop_edit)
+	search_clear_results(a)
+	delete(a.search_results)
+	ui.list_destroy(&a.search_list)
+	ui.input_destroy(&a.search_input)
 	ui.list_destroy(&a.conv_list)
 	ui.list_destroy(&a.net_list)
 	ui.list_destroy(&a.config_list)

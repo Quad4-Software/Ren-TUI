@@ -37,6 +37,7 @@ Key :: enum {
 	Ctrl_A,
 	Ctrl_C,
 	Ctrl_D,
+	Ctrl_F,
 	Ctrl_L,
 	Ctrl_N,
 	Ctrl_P,
@@ -141,6 +142,8 @@ poll_event :: proc(timeout_ms: int = 50) -> (ev: Event, ok: bool) {
 		return Event{kind = .Ctrl_C}, true
 	case 0x04:
 		return Event{kind = .Ctrl_D}, true
+	case 0x06:
+		return Event{kind = .Ctrl_F}, true
 	case 0x0c:
 		return Event{kind = .Ctrl_L}, true
 	case 0x0e:
