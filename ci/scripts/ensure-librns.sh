@@ -17,7 +17,7 @@ if [ -z "${RNS_ROOT:-}" ] || [ ! -d "${RNS_ROOT}" ]; then
 fi
 
 if ! command -v go >/dev/null 2>&1; then
-	echo "error: go is required to build librns (install Go 1.26+)" >&2
+	echo "error: go is required to build librns (install Go 1.27+)" >&2
 	exit 1
 fi
 

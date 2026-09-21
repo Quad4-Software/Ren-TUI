@@ -2,10 +2,10 @@
 # Alpine/musl images are blocked until Go cgo librns runs on musl (see docker/README.md).
 # Builds librns from RNS_REF (not committed in git).
 
-ARG DEBIAN_IMAGE=debian@sha256:7b140f374b289a7c2befc338f42ebe6441b7ea838a042bbd5acbfca6ec875818
-ARG GOLANG_IMAGE=golang:1.26-bookworm
+ARG DEBIAN_IMAGE=debian@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
+ARG GOLANG_IMAGE=golang:1.27-bookworm
 ARG RNS_REPO=https://github.com/Quad4-Software/Reticulum-Go.git
-ARG RNS_REF=v1.1.1
+ARG RNS_REF=v1.3.0
 
 FROM ${GOLANG_IMAGE} AS librns
 ARG RNS_REPO
@@ -25,8 +25,8 @@ RUN mkdir -p /out \
 
 FROM ${DEBIAN_IMAGE} AS builder
 
-ARG ODIN_VERSION=dev-2026-08
-ARG ODIN_LINUX_AMD64_SHA256=d858c0a182bb28d7b04b04dbb8aed592a9c96c84e4400ee917c74b45848a4d87
+ARG ODIN_VERSION=dev-2026-09
+ARG ODIN_LINUX_AMD64_SHA256=167c3e1d7056419dad2e04bb3bd98715b7ff286d4c125f3c5a5ee337c6254283
 
 ENV DEBIAN_FRONTEND=noninteractive \
 	ODIN_VERSION=${ODIN_VERSION} \

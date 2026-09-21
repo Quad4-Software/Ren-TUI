@@ -6,12 +6,12 @@
 # The Alpine image always rebuilds a musl c-archive from Reticulum-Go.
 # lib-musl/ is not committed; it is produced at image build time.
 
-ARG GOLANG_IMAGE=golang:1.26-alpine
-ARG ALPINE_IMAGE=alpine@sha256:14358309a308569c32bdc37e2e0e9694be33a9d99e68afb0f5ff33cc1f695dce
+ARG GOLANG_IMAGE=golang:1.27-alpine
+ARG ALPINE_IMAGE=alpine@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 
 FROM ${GOLANG_IMAGE} AS librns
 ARG RNS_REPO=https://github.com/Quad4-Software/Reticulum-Go.git
-ARG RNS_REF=v1.1.1
+ARG RNS_REF=v1.3.0
 
 RUN apk add --no-cache git gcc musl-dev binutils
 
@@ -27,8 +27,8 @@ RUN mkdir -p /out \
 
 FROM ${ALPINE_IMAGE} AS builder
 
-ARG ODIN_VERSION=dev-2026-08
-ARG ODIN_LINUX_AMD64_SHA256=d858c0a182bb28d7b04b04dbb8aed592a9c96c84e4400ee917c74b45848a4d87
+ARG ODIN_VERSION=dev-2026-09
+ARG ODIN_LINUX_AMD64_SHA256=167c3e1d7056419dad2e04bb3bd98715b7ff286d4c125f3c5a5ee337c6254283
 
 ENV ODIN_VERSION=${ODIN_VERSION} \
 	ODIN_LINUX_AMD64_SHA256=${ODIN_LINUX_AMD64_SHA256} \
