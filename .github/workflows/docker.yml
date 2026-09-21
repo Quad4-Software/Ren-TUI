@@ -18,9 +18,6 @@ concurrency:
 
 permissions:
   contents: read
-  packages: write
-  id-token: write
-  attestations: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -29,6 +26,11 @@ jobs:
   image:
     name: Build and publish
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write # push image to GHCR
+      id-token: write # OIDC token for build provenance
+      attestations: write # publish build attestations
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -44,22 +46,27 @@ jobs:
 
       - name: Image name
         id: image
+        env:
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
           set -eu
-          OWNER=$(printf '%s' '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')
+          OWNER=$(printf '%s' "${REPO_OWNER}" | tr '[:upper:]' '[:lower:]')
           NAME=$(printf '%s' "${IMAGE_NAME}" | tr '[:upper:]' '[:lower:]')
           echo "image=${REGISTRY}/${OWNER}/${NAME}" >>"${GITHUB_OUTPUT}"
 
       - name: Decide push
         id: push
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_PUSH: ${{ inputs.push }}
         run: |
           set -eu
           PUSH=false
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ "${{ inputs.push }}" = "true" ]; then
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            if [ "${INPUT_PUSH}" = "true" ]; then
               PUSH=true
             fi
-          elif [ "${{ github.event_name }}" != "pull_request" ]; then
+          elif [ "${EVENT_NAME}" != "pull_request" ]; then
             PUSH=true
           fi
           echo "push=${PUSH}" >>"${GITHUB_OUTPUT}"

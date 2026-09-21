@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
@@ -88,6 +88,7 @@ jobs:
         uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version: "1.27.x"
+          cache: false
 
       - name: Build glibc host / cross
         if: matrix.libc != 'musl' && matrix.target != 'linux-amd64-glibc'
@@ -113,16 +114,21 @@ jobs:
           make dist LIBC=glibc
 
       - name: Package
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
+          TARGET: ${{ matrix.target }}
         run: |
           set -eu
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            TAG="${INPUT_TAG}"
           else
-            TAG="${{ github.ref_name }}"
+            TAG="${REF_NAME}"
           fi
-          STAGE="dist/${APP_NAME}-${TAG}-${{ matrix.target }}"
+          STAGE="dist/${APP_NAME}-${TAG}-${TARGET}"
           mkdir -p "${STAGE}" dist
-          case "${{ matrix.target }}" in
+          case "${TARGET}" in
           windows-*)
             if ! command -v zip >/dev/null 2>&1; then
               sudo apt-get update
@@ -132,8 +138,8 @@ jobs:
             cp -a LICENSE README.md "${STAGE}/"
             (
               cd dist
-              zip -r "${APP_NAME}-${TAG}-${{ matrix.target }}.zip" "$(basename "${STAGE}")"
-              sha256sum "${APP_NAME}-${TAG}-${{ matrix.target }}.zip" >"${APP_NAME}-${TAG}-${{ matrix.target }}.zip.sha256"
+              zip -r "${APP_NAME}-${TAG}-${TARGET}.zip" "$(basename "${STAGE}")"
+              sha256sum "${APP_NAME}-${TAG}-${TARGET}.zip" >"${APP_NAME}-${TAG}-${TARGET}.zip.sha256"
             )
             ;;
           *)
@@ -145,8 +151,8 @@ jobs:
             cp -a LICENSE README.md "${STAGE}/"
             (
               cd dist
-              tar -czf "${APP_NAME}-${TAG}-${{ matrix.target }}.tar.gz" "$(basename "${STAGE}")"
-              sha256sum "${APP_NAME}-${TAG}-${{ matrix.target }}.tar.gz" >"${APP_NAME}-${TAG}-${{ matrix.target }}.tar.gz.sha256"
+              tar -czf "${APP_NAME}-${TAG}-${TARGET}.tar.gz" "$(basename "${STAGE}")"
+              sha256sum "${APP_NAME}-${TAG}-${TARGET}.tar.gz" >"${APP_NAME}-${TAG}-${TARGET}.tar.gz.sha256"
             )
             ;;
           esac
@@ -203,6 +209,8 @@ jobs:
     needs: [build, windows-smoke]
     if: always() && !cancelled()
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write # create and publish the GitHub release
     steps:
       - name: Harden runner
         uses: step-security/harden-runner@e14015d583714f6e62063499dc959a02595150a1 # v2.21.1
@@ -219,12 +227,16 @@ jobs:
 
       - name: Resolve tag
         id: meta
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          INPUT_TAG: ${{ inputs.tag }}
+          REF_NAME: ${{ github.ref_name }}
         run: |
           set -eu
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "tag=${{ inputs.tag }}" >>"${GITHUB_OUTPUT}"
+          if [ "${EVENT_NAME}" = "workflow_dispatch" ]; then
+            echo "tag=${INPUT_TAG}" >>"${GITHUB_OUTPUT}"
           else
-            echo "tag=${{ github.ref_name }}" >>"${GITHUB_OUTPUT}"
+            echo "tag=${REF_NAME}" >>"${GITHUB_OUTPUT}"
           fi
 
       - name: Download artifacts
@@ -239,6 +251,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
           set -eu
           if gh release view "${TAG}" >/dev/null 2>&1; then
@@ -252,13 +265,14 @@ jobs:
               --draft \
               --generate-notes \
               --title "${APP_NAME} ${TAG}" \
-              --repo "${{ github.repository }}"
+              --repo "${REPO}"
           fi
 
       - name: Upload assets then publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG: ${{ steps.meta.outputs.tag }}
+          REPO: ${{ github.repository }}
         run: |
           set -eu
           shopt -s nullglob
@@ -269,6 +283,6 @@ jobs:
           fi
           echo "publishing $# asset files from successful targets"
           ls -la artifacts || true
-          gh release upload "${TAG}" "$@" --clobber --repo "${{ github.repository }}"
-          gh release edit "${TAG}" --draft=false --repo "${{ github.repository }}"
-          gh release view "${TAG}" --repo "${{ github.repository }}"
+          gh release upload "${TAG}" "$@" --clobber --repo "${REPO}"
+          gh release edit "${TAG}" --draft=false --repo "${REPO}"
+          gh release view "${TAG}" --repo "${REPO}"

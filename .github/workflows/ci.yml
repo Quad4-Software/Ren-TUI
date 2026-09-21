@@ -64,7 +64,9 @@ jobs:
         run: make ensure-librns
 
       - name: Run suite
-        run: make ${{ matrix.suite }}
+        env:
+          SUITE: ${{ matrix.suite }}
+        run: make "${SUITE}"
 
   build:
     name: Build glibc (${{ matrix.os }})
@@ -167,7 +169,11 @@ jobs:
         with:
           egress-policy: audit
       - name: Require green jobs
+        env:
+          TEST_RESULT: ${{ needs.test.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          BUILD_MUSL_RESULT: ${{ needs.build-musl.result }}
         run: |
-          test "${{ needs.test.result }}" = "success"
-          test "${{ needs.build.result }}" = "success"
-          test "${{ needs.build-musl.result }}" = "success"
+          test "${TEST_RESULT}" = "success"
+          test "${BUILD_RESULT}" = "success"
+          test "${BUILD_MUSL_RESULT}" = "success"
