@@ -245,10 +245,9 @@ make package
 make package-deb
 make package-rpm
 make package-arch
-make package-nix
 ```
 
-Packages write to dist/pkg. Deb needs dpkg-deb, rpm needs rpmbuild, Arch zst needs tar and zstd. Nix uses the flake (nix build). AUR-style builds can use packaging/PKGBUILD.
+Packages write to dist/pkg. Deb needs dpkg-deb, rpm needs rpmbuild, Arch zst needs tar and zstd. AUR-style builds can use packaging/PKGBUILD.
 
 ### CLI
 

@@ -52,7 +52,7 @@ ODIN_TEST_SERIAL_FLAGS := $(ODIN_TEST_FLAGS) -define:ODIN_TEST_THREADS=1
 	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop \
 	test-oracle test-blackbox \
 	test-live run listen ensure-librns vendor-librns vendor-librns-musl remotes help man check dist cross bench \
-	package package-deb package-rpm package-arch package-nix
+	package package-deb package-rpm package-arch
 
 all: $(OUT) $(LISTEN)
 
@@ -94,7 +94,6 @@ help:
 		'  package-deb    build .deb (needs dpkg-deb)' \
 		'  package-rpm    build .rpm (needs rpmbuild)' \
 		'  package-arch   build .pkg.tar.zst (needs tar+zstd)' \
-		'  package-nix    build with nix (needs nix, flake.nix)' \
 		'' \
 		'Variables: PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) LIVE_SECS=$(LIVE_SECS) LIBC=$(LIBC) TARGET= RNS_ROOT='
 
@@ -213,9 +212,6 @@ package-rpm:
 
 package-arch:
 	sh $(ROOT)/ci/scripts/package-arch.sh
-
-package-nix:
-	nix build .#ren-tui -L
 
 test-interop:
 	python3 tests/interop/python_lxmf_interop.py
