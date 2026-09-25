@@ -8,7 +8,7 @@
 extern "C" {
 #endif
 
-#define RNS_API_VERSION "1.5"
+#define RNS_API_VERSION "1.6"
 
 #define RNS_HASH_LEN 16
 
@@ -49,6 +49,11 @@ typedef struct rns_event {
 	int path_truncated;
 	char error_message[256];
 	int error_message_truncated;
+	/* app_data and app_data_cap are IN-parameters for rns_event_poll:
+	   app_data must point to app_data_cap writable bytes owned by the
+	   caller, or both must be zero. The library copies the event payload
+	   into that buffer and sets app_data_len/app_data_truncated. Passing
+	   an uninitialised pointer here is undefined behavior. */
 	uint8_t *app_data;
 	size_t app_data_len;
 	size_t app_data_cap;
@@ -87,6 +92,7 @@ uint64_t rns_node_create(const char *config_path);
 int rns_node_start(uint64_t node);
 int rns_node_stop(uint64_t node);
 int rns_node_destroy(uint64_t node);
+int rns_node_reload_config(uint64_t node);
 int rns_node_set_identity(uint64_t node, uint64_t identity);
 int rns_node_resume(uint64_t node);
 int rns_node_pause(uint64_t node);

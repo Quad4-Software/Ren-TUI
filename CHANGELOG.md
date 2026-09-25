@@ -4,6 +4,7 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 
 ## 0.3.1 - [unreleased]
 
+- Pin Reticulum-Go to v1.3.1 (librns ABI 1.6) and bind node config reload
 - Fix page cache allocator mismatch that caused SIGABRT when navigating to or rendering a fetched page
 
 ## 0.3.0 - 2026-09-06

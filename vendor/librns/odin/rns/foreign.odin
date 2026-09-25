@@ -23,6 +23,7 @@ foreign lib {
 	rns_node_start          :: proc(node: u64) -> c.int ---
 	rns_node_stop           :: proc(node: u64) -> c.int ---
 	rns_node_destroy        :: proc(node: u64) -> c.int ---
+	rns_node_reload_config  :: proc(node: u64) -> c.int ---
 	rns_node_set_identity   :: proc(node: u64, identity: u64) -> c.int ---
 	rns_node_resume         :: proc(node: u64) -> c.int ---
 	rns_node_pause          :: proc(node: u64) -> c.int ---

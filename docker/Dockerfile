@@ -5,7 +5,7 @@
 ARG DEBIAN_IMAGE=debian@sha256:9cc080028c43b27d2074d63a5f9caf7166d731494965616c1a6d2827a004585c
 ARG GOLANG_IMAGE=golang:1.27-bookworm
 ARG RNS_REPO=https://github.com/Quad4-Software/Reticulum-Go.git
-ARG RNS_REF=v1.3.0
+ARG RNS_REF=v1.3.1
 
 FROM ${GOLANG_IMAGE} AS librns
 ARG RNS_REPO

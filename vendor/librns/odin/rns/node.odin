@@ -32,6 +32,10 @@ node_destroy :: proc(node: Node) -> Error {
 	return Error(rns_node_destroy(u64(node)))
 }
 
+node_reload_config :: proc(node: Node) -> Error {
+	return Error(rns_node_reload_config(u64(node)))
+}
+
 node_set_identity :: proc(node: Node, identity: Identity) -> Error {
 	return Error(rns_node_set_identity(u64(node), u64(identity)))
 }
