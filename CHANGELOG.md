@@ -4,6 +4,8 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 
 ## 0.3.1 - [unreleased]
 
+- Keep network-list hops visible when a peer has a stamp cost
+- Mark a large direct send as sent while its resource transfer is still queued
 - Remove the Nix package
 - Jail page paths on a directory boundary so a sibling directory name cannot match
 - Store conversations, peers, and app config as user-only files

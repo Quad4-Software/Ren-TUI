@@ -32,11 +32,23 @@ network_list_row_cap :: proc(list_h: int) -> int {
 	return cap_n
 }
 
-// Display columns available for a peer name inside a network list row.
+// Columns that are not the peer name: cursor prefix, mark, gaps, full hash.
+PEER_ROW_CHROME :: 2 + 1 + 1 + 2 + 32 + 1
+
+// Display columns for a peer name so the hash and the trailing text stay on
+// the row. extra is the display width of the stamp cost and hops strings.
+peer_name_cols_for :: proc(list_w, extra: int) -> int {
+	room := list_w - PEER_ROW_CHROME - extra
+	if room < 1 {
+		return 1
+	}
+	return room
+}
+
+// Worst case used when the row's cost and hops text are not known yet.
+// " cost=65535" is 11 columns and "hops=255" is 8.
 peer_name_cols :: proc(list_w: int) -> int {
-	// "> " + spaces + 32 hex + hops/cost trailer
-	overhead := 2 + 2 + 32 + 14
-	return max(8, list_w - overhead)
+	return peer_name_cols_for(list_w, 11 + 8)
 }
 
 // Interface card rows that fit in the interfaces pane.

@@ -272,7 +272,6 @@ refresh_network_list :: proc(a: ^App, prev_sel, prev_scroll: int) {
 		list_w = max(24, a.term_w * 2 / 3)
 	}
 	show_cap := ui.network_list_row_cap(list_h)
-	name_cols := ui.peer_name_cols(list_w)
 
 	idxs := make([dynamic]int, 0, 64, context.temp_allocator)
 	for peer, i in a.directory.peers {
@@ -300,17 +299,19 @@ refresh_network_list :: proc(a: ^App, prev_sel, prev_scroll: int) {
 		}
 		peer := a.directory.peers[i]
 		name := peer.display_name if peer.display_name != "" else "-"
-		name = truncate_runes_local(name, name_cols)
 		hex := store.hash_hex(peer.hash, context.temp_allocator)
 		cost := ""
 		if sc, ok := peer.stamp_cost.?; ok {
 			cost = fmt.tprintf(" cost=%d", sc)
 		}
+		hops := store.format_peer_hops_peer(peer)
+		name_cols := ui.peer_name_cols_for(list_w, ui.string_cols(cost) + ui.string_cols(hops))
+		name = truncate_runes_local(name, name_cols)
 		mark := " "
 		if a.cfg.has_propagation_node && peer.kind == .Propagation && peer.hash == a.cfg.propagation_node {
 			mark = "*"
 		}
-		ui.list_push(&a.net_list, fmt.tprintf("%s %s  %s%s %s", mark, name, hex, cost, store.format_peer_hops_peer(peer)))
+		ui.list_push(&a.net_list, fmt.tprintf("%s %s  %s%s %s", mark, name, hex, cost, hops))
 		append(&a.net_peer_idx, i)
 		shown += 1
 	}

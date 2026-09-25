@@ -193,14 +193,16 @@ send_link_close :: proc(s: ^Session, link: rns.Link) {
 }
 
 @(private)
-send_link_send :: proc(s: ^Session, link: rns.Link, data: []u8) -> bool {
+// resource is true when the payload went out as a link resource. That call
+// returns once the transfer is queued, not when the peer has the bytes.
+send_link_send :: proc(s: ^Session, link: rns.Link, data: []u8) -> (ok, resource: bool) {
 	if s.send_transport.link_send != nil {
-		return s.send_transport.link_send(s.send_transport.user, link, data)
+		return s.send_transport.link_send(s.send_transport.user, link, data), false
 	}
 	if len(data) <= lxmf.LINK_PACKET_MDU && rns.link_send(link, data) == .Ok {
-		return true
+		return true, false
 	}
-	return rns.link_send_resource(link, data, "lxmf") == .Ok
+	return rns.link_send_resource(link, data, "lxmf") == .Ok, true
 }
 
 @(private)
@@ -582,16 +584,18 @@ send_mark_stored_state :: proc(s: ^Session, state: store.Message_State) {
 }
 
 @(private)
-send_complete_ok :: proc(s: ^Session) {
+send_complete_ok :: proc(s: ^Session, resource := false) {
 	if !s.send.persisted_out {
 		send_persist_out(s)
 		s.send.persisted_out = true
 	}
-	// Direct sends ride a reliable link, so a successful link send means the
-	// peer stack acknowledged receipt. Opportunistic and propagated sends are
-	// fire-and-forget into the network, so they stop at Sent until a proof or
-	// reply can confirm delivery.
-	state := store.Message_State.Delivered if s.send.method == .Direct else store.Message_State.Sent
+	// A link packet is on a reliable link. A resource transfer is only queued
+	// here, so it stays Sent until the peer can confirm it. Opportunistic and
+	// propagated sends are fire-and-forget into the network.
+	state := store.Message_State.Sent
+	if s.send.method == .Direct && !resource {
+		state = .Delivered
+	}
 	send_mark_stored_state(s, state)
 	session_event_push(s, .Send_Ok)
 	if s.started && s.delivery_dest != 0 {
@@ -829,11 +833,15 @@ session_send_tick :: proc(s: ^Session) {
 			return
 		}
 		payload := s.send.wire if len(s.send.wire) > 0 else s.send.packed
-		if !send_link_send(s, s.send.link, payload) {
+		ok, resource := send_link_send(s, s.send.link, payload)
+		if !ok {
 			send_fail(s, "send failed")
 			return
 		}
-		send_complete_ok(s)
+		if resource {
+			send_set_status(s, "transferring...")
+		}
+		send_complete_ok(s, resource)
 	}
 }
 

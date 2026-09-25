@@ -49,9 +49,10 @@ test_layout_network_list_row_cap_scales_with_height :: proc(t: ^testing.T) {
 @(test)
 test_layout_peer_name_cols_leaves_room_for_hash :: proc(t: ^testing.T) {
 	cols := ui.peer_name_cols(80)
-	testing.expect(t, cols >= 8)
-	testing.expect(t, cols + 2 + 2 + 32 + 14 <= 80 || cols == 8)
-	testing.expect_value(t, ui.peer_name_cols(40), 8)
+	testing.expect(t, cols >= 1)
+	testing.expect(t, cols + ui.PEER_ROW_CHROME + 11 + 8 <= 80)
+	testing.expect(t, ui.peer_name_cols_for(80, 6) > cols)
+	testing.expect_value(t, ui.peer_name_cols(40), 1)
 }
 
 @(test)
