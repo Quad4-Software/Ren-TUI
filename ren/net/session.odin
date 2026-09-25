@@ -17,7 +17,10 @@ import "ren:constants"
 import "ren:lxmf"
 import "ren:store"
 
-EVENT_APP_BUF_SIZE :: 64 * 1024
+// Caller buffer for rns_event_poll. librns copies the payload here and
+// sets app_data_truncated when it does not fit. Default LXMF delivery
+// resources are about 1 MB, so the buffer must cover that plus framing.
+EVENT_APP_BUF_SIZE :: 1_250_000
 
 Session :: struct {
 	node:           rns.Node,

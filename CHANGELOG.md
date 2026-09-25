@@ -4,6 +4,8 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 
 ## 0.3.1 - [unreleased]
 
+- Accept LXMF and page payloads up to the default 1 MB delivery size instead of dropping them at 64 KB
+- Fail a page or file fetch when the event buffer truncated the payload, instead of saving the prefix as a complete file
 - Pin Reticulum-Go to v1.3.1 (librns ABI 1.6) and bind node config reload
 - Fix page cache allocator mismatch that caused SIGABRT when navigating to or rendering a fetched page
 

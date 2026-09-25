@@ -381,6 +381,10 @@ session_page_on_event :: proc(s: ^Session, ev: ^rns.Event) -> bool {
 				return false
 			}
 		}
+		if ev.app_data_truncated != 0 {
+			page_fail(s, "response truncated")
+			return true
+		}
 		data := rns.event_app_data(ev)
 		if len(data) == 0 {
 			page_fail(s, "empty" if s.page.is_file else "page empty")
@@ -452,14 +456,19 @@ session_page_on_event :: proc(s: ^Session, ev: ^rns.Event) -> bool {
 		if !s.page.is_file || (s.page.phase != .Waiting_Response && s.page.phase != .Sending_Request) {
 			return false
 		}
+		if ev.app_data_truncated != 0 {
+			page_fail(s, "file truncated")
+			return true
+		}
 		data := rns.event_app_data(ev)
 		if len(data) == 0 {
 			page_fail(s, "file empty")
 			return true
 		}
+		over_cap := false
 		if len(data) > constants.FILE_MAX_BYTES {
 			data = data[:constants.FILE_MAX_BYTES]
-			page_set_status(s, fmt.tprintf("%s truncated", s.page.filename))
+			over_cap = true
 		}
 		s.page.bytes_got = len(data)
 		s.page.bytes_total = len(data)
@@ -472,7 +481,11 @@ session_page_on_event :: proc(s: ^Session, ev: ^rns.Event) -> bool {
 			_ = rns.link_close(s.page.link)
 			s.page.link = 0
 		}
-		page_set_status(s, fmt.tprintf("saved %s", s.page.filename))
+		if over_cap {
+			page_set_status(s, fmt.tprintf("%s truncated", s.page.filename))
+		} else {
+			page_set_status(s, fmt.tprintf("saved %s", s.page.filename))
+		}
 		return true
 	case .Announce, .Link_Data, .Link_Closed, .Request_Incoming, .Destination_Data, .None:
 		return false
