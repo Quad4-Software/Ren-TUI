@@ -4,6 +4,7 @@ New work goes under the [draft] section only. Do not edit [released] sections af
 
 ## 0.3.1 - [unreleased]
 
+- Jail page paths on a directory boundary so a sibling directory name cannot match
 - Store conversations, peers, and app config as user-only files
 - Send an opportunistic message over a direct link when it is larger than one Reticulum packet
 - Send a direct message larger than the 431 byte link MDU as a resource instead of a packet that cannot fit

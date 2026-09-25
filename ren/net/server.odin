@@ -240,7 +240,12 @@ page_server_map :: proc(server_dir, prefix, request_path: string) -> (disk_path:
 	}
 	joined, _ := filepath.join({server_dir, rel}, context.temp_allocator)
 	cleaned, _ := filepath.clean(joined)
-	if !strings.has_prefix(cleaned, server_dir) {
+	// Require a path boundary so a sibling like "<dir>-extra" cannot match.
+	root := server_dir
+	if !strings.has_suffix(root, "/") {
+		root = strings.concatenate({server_dir, "/"}, context.temp_allocator)
+	}
+	if !strings.has_prefix(cleaned, root) {
 		return "", false
 	}
 	return cleaned, true
