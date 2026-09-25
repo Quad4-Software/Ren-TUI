@@ -136,3 +136,37 @@ test_bug_empty_peers_file_loads_empty :: proc(t: ^testing.T) {
 	store.directory_load_all(&d, &cfg)
 	testing.expect_value(t, len(d.peers), 0)
 }
+
+@(test)
+test_conversation_file_mode_is_user_only :: proc(t: ^testing.T) {
+	base, _ := filepath.join({"/tmp", "ren-tui-conv-mode"})
+	_ = os.remove_all(base)
+	_ = os.make_directory_all(base)
+	defer os.remove_all(base)
+
+	cfg := store.config_default()
+	defer store.config_destroy_strings(&cfg)
+	delete(cfg.data_dir)
+	cfg.data_dir = strings.clone(base)
+
+	convs: store.Conversations
+	store.conversations_init(&convs)
+	defer store.conversations_destroy(&convs)
+	peer: [store.HASH_LEN]u8
+	peer[0] = 0x41
+	msg := store.Stored_Message{
+		direction = .In,
+		title = strings.clone(""),
+		content = strings.clone("secret"),
+		method = .Direct,
+	}
+	store.conversations_add_message_persist(&convs, &cfg, peer, msg, "peer")
+
+	hex := store.hash_hex(peer, context.temp_allocator)
+	path, _ := filepath.join({base, constants.CONVERSATIONS_DIR, hex, constants.MESSAGES_FILE})
+	fi, err := os.stat(path, context.temp_allocator)
+	testing.expect(t, err == nil)
+	testing.expect(t, .Read_User in fi.mode)
+	testing.expect(t, .Read_Group not_in fi.mode)
+	testing.expect(t, .Read_Other not_in fi.mode)
+}

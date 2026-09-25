@@ -15,6 +15,15 @@ import "core:strings"
 import "ren:constants"
 import "ren:lxmf"
 
+write_private_file :: proc(path: string, data: []u8) -> bool {
+	perm := os.Permissions{.Read_User, .Write_User}
+	if os.write_entire_file(path, data, perm) != nil {
+		return false
+	}
+	_ = os.chmod(path, perm)
+	return true
+}
+
 conversations_dir :: proc(cfg: ^Config, allocator := context.allocator) -> string {
 	p, _ := filepath.join({cfg.data_dir, constants.CONVERSATIONS_DIR}, allocator)
 	return p
@@ -85,7 +94,7 @@ conversations_save_peer :: proc(c: ^Conversations, cfg: ^Config, peer: [HASH_LEN
 	defer delete(data)
 	final_path, _ := filepath.join({peer_dir, constants.MESSAGES_FILE}, context.temp_allocator)
 	tmp_path := strings.concatenate({final_path, ".tmp"}, context.temp_allocator)
-	if os.write_entire_file(tmp_path, data) != nil {
+	if !write_private_file(tmp_path, data) {
 		return false
 	}
 	if os.rename(tmp_path, final_path) != nil {

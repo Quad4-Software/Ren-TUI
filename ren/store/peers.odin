@@ -307,7 +307,7 @@ peers_spill_save_all :: proc(path: string, peers: []Peer) -> bool {
 	}
 	defer delete(data)
 	tmp := strings.concatenate({path, ".tmp"}, context.temp_allocator)
-	if os.write_entire_file(tmp, data) != nil {
+	if !write_private_file(tmp, data) {
 		return false
 	}
 	if os.rename(tmp, path) != nil {

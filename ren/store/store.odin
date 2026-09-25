@@ -435,7 +435,7 @@ config_save :: proc(c: ^Config) -> bool {
 		"yes" if c.mouse else "no",
 		theme_block,
 	)
-	ok := os.write_entire_file(c.config_path, transmute([]u8)body) == nil
+	ok := write_private_file(c.config_path, transmute([]u8)body)
 	if ok {
 		_ = config_sync_rns_local_hops_delta(c)
 	}
