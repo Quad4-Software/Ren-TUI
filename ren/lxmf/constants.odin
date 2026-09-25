@@ -10,6 +10,14 @@ package lxmf
 HASH_LEN :: 16
 SIGNATURE_LEN :: 64
 MESSAGE_ID_LEN :: 32
+
+// Python LXMessage.ENCRYPTED_PACKET_MAX_CONTENT at the default 500 byte MTU.
+// Larger opportunistic payloads cannot fit one RNS packet.
+OPPORTUNISTIC_MAX_CONTENT :: 295
+PAYLOAD_SIZE_OVERHEAD :: 16
+
+// Python RNS.Link.MDU. A packed LXMF message larger than this goes as a resource.
+LINK_PACKET_MDU :: 431
 STAMP_LEN :: 32
 NAME_HASH_LEN :: 10
 

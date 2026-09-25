@@ -157,3 +157,13 @@ test_message_with_stamp_cost :: proc(t: ^testing.T) {
 	defer lxmf.message_destroy(&out)
 	testing.expect(t, len(out.stamp) > 0)
 }
+
+@(test)
+test_opportunistic_packet_limit :: proc(t: ^testing.T) {
+	small := make([]u8, 112 + lxmf.OPPORTUNISTIC_MAX_CONTENT)
+	testing.expect(t, lxmf.opportunistic_fits_packet(small))
+	big := make([]u8, 112 + lxmf.OPPORTUNISTIC_MAX_CONTENT + 1)
+	testing.expect(t, !lxmf.opportunistic_fits_packet(big))
+	delete(small)
+	delete(big)
+}

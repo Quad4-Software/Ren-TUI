@@ -197,7 +197,7 @@ send_link_send :: proc(s: ^Session, link: rns.Link, data: []u8) -> bool {
 	if s.send_transport.link_send != nil {
 		return s.send_transport.link_send(s.send_transport.user, link, data)
 	}
-	if rns.link_send(link, data) == .Ok {
+	if len(data) <= lxmf.LINK_PACKET_MDU && rns.link_send(link, data) == .Ok {
 		return true
 	}
 	return rns.link_send_resource(link, data, "lxmf") == .Ok
@@ -355,6 +355,17 @@ send_start_stamping :: proc(s: ^Session) -> bool {
 @(private)
 send_enter_delivery :: proc(s: ^Session) {
 	s.send.deadline = time.tick_add(time.tick_now(), time.Duration(constants.LINK_TIMEOUT_SEC * 2) * time.Second)
+	if s.send.method == .Opportunistic && !lxmf.opportunistic_fits_packet(s.send.packed) {
+		link_target, wire, wok := send_wire_from_packed(s, .Direct, s.send.packed)
+		if wok {
+			delete(s.send.wire)
+			s.send.method = .Direct
+			s.send.link_target = link_target
+			s.send.wire = wire
+			send_mark_stored_method(s, .Direct)
+			send_set_status(s, "message exceeds opportunistic packet, using direct")
+		}
+	}
 	if s.send.method == .Opportunistic {
 		s.send.phase = .Packet_Send
 		send_set_status(s, "sending opportunistic...")
@@ -536,6 +547,25 @@ send_persist_out :: proc(s: ^Session) {
 	// The message id is assigned later (after stamping). Remember the slot so
 	// state updates can patch id and state together.
 	s.send.stored_idx = store.conversations_message_count(s.send.conversations, s.send.dest) - 1
+}
+
+@(private)
+send_mark_stored_method :: proc(s: ^Session, method: lxmf.Method) {
+	if s.send.conversations == nil || s.send.stored_idx < 0 {
+		return
+	}
+	idx := store.conversations_index_of(s.send.conversations, s.send.dest)
+	if idx < 0 {
+		return
+	}
+	msgs := &s.send.conversations.items[idx].messages
+	if s.send.stored_idx >= len(msgs) {
+		return
+	}
+	msgs[s.send.stored_idx].method = method
+	if s.send.cfg != nil {
+		_ = store.conversations_save_peer(s.send.conversations, s.send.cfg, s.send.dest)
+	}
 }
 
 // Flip the persisted outbound message to a new delivery state and save.

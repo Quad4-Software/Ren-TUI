@@ -38,6 +38,20 @@ opportunistic_plaintext :: proc(packed: []u8) -> []u8 {
 	return packed[HASH_LEN:]
 }
 
+// content_size matches Python LXMessage.pack: payload bytes minus the
+// timestamp and msgpack struct overhead that are not user content.
+opportunistic_content_size :: proc(packed: []u8) -> int {
+	header := HASH_LEN * 2 + SIGNATURE_LEN
+	if len(packed) < header + PAYLOAD_SIZE_OVERHEAD {
+		return 0
+	}
+	return len(packed) - header - PAYLOAD_SIZE_OVERHEAD
+}
+
+opportunistic_fits_packet :: proc(packed: []u8) -> bool {
+	return opportunistic_content_size(packed) <= OPPORTUNISTIC_MAX_CONTENT
+}
+
 method_label :: proc(m: Method) -> string {
 	switch m {
 	case .Opportunistic:
