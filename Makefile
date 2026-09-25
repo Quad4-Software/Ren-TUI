@@ -30,6 +30,7 @@ BIN_LIBRNS  := bin/librns.so
 
 RNS_ROOT    ?=
 LIVE_SECS   ?= 30
+LIVE_PEER   := bin/ren-live-peer
 
 REMOTE_GITHUB ?= git@github.com:Quad4-Software/Ren-TUI.git
 REMOTE_RNS    ?= rns://06a54b505bb67b25ef3f8097e8001edc/public/ren-tui
@@ -221,8 +222,14 @@ test-interop:
 	python3 tests/interop/python_nomad_page_interop.py
 	python3 tests/interop/python_lxmf_delivery_proof_interop.py
 
-test-interop-live: $(LISTEN)
+$(LIVE_PEER): tests/live/peer.odin $(shell find ren -name '*.odin' 2>/dev/null) $(BIN_LIBRNS)
+	mkdir -p bin
+	LIBRARY_PATH="$(VENDOR_LIB):$${LIBRARY_PATH:-}" \
+	$(ODIN) build tests/live -out:$(LIVE_PEER) $(COLLECTION) $(LINKER_FLAGS) $(VERSION_DEFINES)
+
+test-interop-live: $(LISTEN) $(LIVE_PEER)
 	REN_LIVE_PROOF=1 python3 tests/interop/python_lxmf_delivery_proof_interop.py
+	python3 tests/interop/python_lxmf_live_roundtrip.py
 
 test-live: $(LISTEN)
 	./$(LISTEN) -t $(LIVE_SECS) $${REN_RNS_CONFIG:+-c $$REN_RNS_CONFIG}
