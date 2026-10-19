@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: 0BSD
 # Resolve TARGET into ODIN_TARGET, LIB_SUBDIR, LIB_NAME, PACKAGE_EXT.
-# Usage: eval "$(sh ci/scripts/target-env.sh linux-amd64)"
+# Usage: eval "$(sh scripts/target-env.sh linux-amd64)"
 
 set -eu
 

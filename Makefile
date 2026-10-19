@@ -11,7 +11,7 @@ LIBDIR      := $(PREFIX)/lib/ren-tui
 
 LIBC        ?= auto
 ifeq ($(LIBC),auto)
-LIBC := $(shell $(ROOT)/ci/scripts/detect-libc.sh)
+LIBC := $(shell $(ROOT)/scripts/detect-libc.sh)
 endif
 
 VENDOR_RNS  := $(ROOT)/vendor/librns
@@ -51,8 +51,7 @@ ODIN_TEST_SERIAL_FLAGS := $(ODIN_TEST_FLAGS) -define:ODIN_TEST_THREADS=1
 	test-smoke test-unit test-property test-fuzz test-acceptance \
 	test-e2e test-cross-terminal test-mutation test-race test-chaos test-interop \
 	test-oracle test-blackbox \
-	test-live run listen ensure-librns vendor-librns vendor-librns-musl remotes help man check dist cross bench \
-	package package-deb package-rpm package-arch
+	test-live run listen ensure-librns vendor-librns vendor-librns-musl remotes help man check cross bench
 
 all: $(OUT) $(LISTEN)
 
@@ -60,15 +59,7 @@ all: $(OUT) $(LISTEN)
 TARGET ?=
 cross:
 	@test -n "$(TARGET)" || (echo "usage: make cross TARGET=linux-arm64|windows-amd64|..." >&2; exit 2)
-	TARGET="$(TARGET)" RNS_ROOT="$(RNS_ROOT)" sh $(ROOT)/ci/scripts/build-target.sh
-
-
-dist: $(OUT) $(LISTEN)
-ifeq ($(LIBC),musl)
-	@true
-else
-	patchelf --set-rpath '$$ORIGIN' $(OUT) $(LISTEN)
-endif
+	TARGET="$(TARGET)" RNS_ROOT="$(RNS_ROOT)" sh $(ROOT)/scripts/build-target.sh
 
 help:
 	@printf '%s\n' \
@@ -87,13 +78,8 @@ help:
 		'  ensure-librns  fetch Reticulum-Go (RNS_REF) and build vendor glibc librns.so' \
 		'  vendor-librns  copy glibc librns.so from RNS_ROOT into vendor/' \
 		'  vendor-librns-musl  rebuild vendor/librns/lib-musl/librns.a (needs go+musl)' \
-		'  cross          build for TARGET= (uses ci/scripts/build-target.sh)' \
+		'  cross          build for TARGET= (uses scripts/build-target.sh)' \
 		'  clean          remove bin/' \
-		'  dist           build then set RUNPATH to $$ORIGIN (needs patchelf)' \
-		'  package        build deb rpm and Arch pkg.tar.zst into dist/pkg' \
-		'  package-deb    build .deb (needs dpkg-deb)' \
-		'  package-rpm    build .rpm (needs rpmbuild)' \
-		'  package-arch   build .pkg.tar.zst (needs tar+zstd)' \
 		'' \
 		'Variables: PREFIX=$(PREFIX) DESTDIR=$(DESTDIR) LIVE_SECS=$(LIVE_SECS) LIBC=$(LIBC) TARGET= RNS_ROOT='
 
@@ -201,18 +187,6 @@ test-blackbox: $(BIN_LIBRNS)
 bench: $(BIN_LIBRNS)
 	$(ODIN_TEST_ENV) $(ODIN) test tests/bench $(ODIN_TEST_SERIAL_FLAGS)
 
-package:
-	sh $(ROOT)/ci/scripts/package-all.sh
-
-package-deb:
-	sh $(ROOT)/ci/scripts/package-deb.sh
-
-package-rpm:
-	sh $(ROOT)/ci/scripts/package-rpm.sh
-
-package-arch:
-	sh $(ROOT)/ci/scripts/package-arch.sh
-
 test-interop:
 	python3 tests/interop/python_lxmf_interop.py
 	python3 tests/interop/python_nomad_page_interop.py
@@ -247,7 +221,7 @@ remotes:
 	@git remote -v
 
 ensure-librns:
-	sh $(ROOT)/ci/scripts/ensure-librns.sh
+	sh $(ROOT)/scripts/ensure-librns.sh
 
 vendor-librns:
 	@test -n "$(RNS_ROOT)" || (echo "usage: make vendor-librns RNS_ROOT=/path/to/Reticulum-Go" >&2; exit 2)
@@ -265,7 +239,7 @@ vendor-librns:
 	cp -f "$(VENDOR_RNS)/lib/librns.so" "$(BIN_LIBRNS)"
 
 vendor-librns-musl:
-	RNS_ROOT="$(RNS_ROOT)" sh $(ROOT)/ci/scripts/build-librns-musl.sh
+	RNS_ROOT="$(RNS_ROOT)" sh $(ROOT)/scripts/build-librns-musl.sh
 
 clean:
 	rm -rf bin

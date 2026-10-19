@@ -40,7 +40,7 @@ Lastly, be patient.
 - Keep patches focused on a single change or fix.
 - Test your changes before exporting. Run `make test` (or at least `make test-smoke` and `make test-unit`) for Odin code.
 - Match existing code style and SPDX headers (`// SPDX-License-Identifier: 0BSD`).
-- Prefer POSIX shell under `ci/scripts/` when adding CI helpers.
+- Prefer POSIX shell under `scripts/` when adding build helpers.
 - Do not add drive-by refactors or unrequested markdown files.
 
 ## Licensing of contributions

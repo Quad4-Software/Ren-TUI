@@ -1,18 +1,15 @@
 #!/bin/sh
 # SPDX-License-Identifier: 0BSD
 # Clone or update Reticulum-Go for librns builds.
-# Prints RNS_ROOT=<path> and writes GITHUB_ENV when available.
+# Prints RNS_ROOT=<path>.
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-# shellcheck disable=SC1091
-. "${ROOT}/ci/scripts/lib-env.sh"
-ci_load_env
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 
 DEST=${RNS_ROOT:-${ROOT}/.deps/Reticulum-Go}
 REPO=${RNS_REPO:-https://github.com/Quad4-Software/Reticulum-Go.git}
-REF=${RNS_REF:-v1.3.1}
+REF=${RNS_REF:-v1.4.1}
 
 mkdir -p "$(dirname "${DEST}")"
 if [ -d "${DEST}/.git" ]; then
@@ -25,6 +22,3 @@ else
 fi
 
 echo "RNS_ROOT=${DEST}"
-if [ -n "${GITHUB_ENV:-}" ]; then
-	echo "RNS_ROOT=${DEST}" >>"${GITHUB_ENV}"
-fi

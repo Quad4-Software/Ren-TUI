@@ -14,6 +14,6 @@ Source files carry `// SPDX-License-Identifier: 0BSD` headers unless noted other
 
 ## Third-party software
 
-Ren TUI depends on third-party projects including [Reticulum](https://reticulum.network/), [Reticulum-Go / librns](https://github.com/Quad4-Software/Reticulum-Go), and the [Odin](https://odin-lang.org/) compiler and standard library. Those projects are governed by their own licenses. See `vendor/librns/`, upstream repositories, and release notes for details.
+Ren TUI depends on third-party projects including [Reticulum](https://reticulum.network/), [Reticulum-Go / librns](https://github.com/Quad4-Software/Reticulum-Go), and the [Odin](https://odin-lang.org/) compiler and standard library. Those projects are governed by their own licenses. See `vendor/librns/` and the upstream repositories for details.
 
 Vendored `librns` artifacts under `vendor/librns/` remain subject to their upstream license terms.

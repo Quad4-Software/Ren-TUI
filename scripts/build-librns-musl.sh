@@ -5,15 +5,12 @@
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-# shellcheck disable=SC1091
-. "${ROOT}/ci/scripts/lib-env.sh"
-ci_load_env 2>/dev/null || true
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 
 OUT_DIR=${OUT_DIR:-${ROOT}/vendor/librns/lib-musl}
 DEST=${RNS_ROOT:-${ROOT}/.deps/Reticulum-Go}
 REPO=${RNS_REPO:-https://github.com/Quad4-Software/Reticulum-Go.git}
-REF=${RNS_REF:-v1.3.1}
+REF=${RNS_REF:-v1.4.1}
 
 mkdir -p "${OUT_DIR}" "$(dirname "${DEST}")"
 

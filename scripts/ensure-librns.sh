@@ -5,12 +5,9 @@
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
-# shellcheck disable=SC1091
-. "${ROOT}/ci/scripts/lib-env.sh"
-ci_load_env
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 
-eval "$(sh "${ROOT}/ci/scripts/fetch-rns.sh")"
+eval "$(sh "${ROOT}/scripts/fetch-rns.sh")"
 if [ -z "${RNS_ROOT:-}" ] || [ ! -d "${RNS_ROOT}" ]; then
 	echo "error: RNS_ROOT missing after fetch-rns" >&2
 	exit 1

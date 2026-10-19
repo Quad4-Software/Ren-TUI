@@ -2,20 +2,16 @@
 # SPDX-License-Identifier: 0BSD
 # Build ren-tui for TARGET. Optionally builds librns when RNS_ROOT is set.
 #
-#   TARGET=linux-amd64 sh ci/scripts/build-target.sh
-#   TARGET=windows-amd64 RNS_ROOT=/path/to/Reticulum-Go sh ci/scripts/build-target.sh
+#   TARGET=linux-amd64 sh scripts/build-target.sh
+#   TARGET=windows-amd64 RNS_ROOT=/path/to/Reticulum-Go sh scripts/build-target.sh
 
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname "$0")/../.." && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 cd "${ROOT}"
 
-# shellcheck disable=SC1091
-. "${ROOT}/ci/scripts/lib-env.sh"
-ci_load_env
-
 TARGET=${TARGET:-}
-eval "$(sh "${ROOT}/ci/scripts/target-env.sh" "${TARGET}")"
+eval "$(sh "${ROOT}/scripts/target-env.sh" "${TARGET}")"
 
 VENDOR_RNS=${VENDOR_RNS:-${ROOT}/vendor/librns}
 VENDOR_LIB=${VENDOR_RNS}/lib/${LIB_SUBDIR}
@@ -129,7 +125,7 @@ build_one() {
 		case "${TARGET}" in
 		windows-*)
 			zig build-exe ${objs} \
-				"${ROOT}/ci/windows/_fltused.c" \
+				"${ROOT}/scripts/windows/_fltused.c" \
 				"${VENDOR_LIB}/${LIB_NAME}" \
 				-target "${ZIG_TARGET}" \
 				-femit-bin="${out}" \

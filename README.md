@@ -9,7 +9,7 @@ Ren TUI is a terminal LXMF client for [Reticulum](https://reticulum.network/) bu
 
 rngit: `git clone rns://06a54b505bb67b25ef3f8097e8001edc/public/ren-tui`
 
-Reticulum-Go: v1.3.1
+Reticulum-Go: v1.4.1
 
 ## Design
 
@@ -159,7 +159,7 @@ Runtime needs:
 - `librns.so` built via `make ensure-librns` (copied to `bin/` on build, rpath points at `bin/`)
 - system `libc` / `libm` (and usually `libresolv`)
 
-`vendor/librns/` keeps the C header and Odin bindings in git. Shared libraries are not committed. Build them from the pinned Reticulum-Go ref:
+`vendor/librns/` holds the C header and Odin bindings, populated by `make ensure-librns`. Shared libraries are not committed. Build them from the pinned Reticulum-Go ref:
 
 ```
 make ensure-librns
@@ -170,15 +170,15 @@ make vendor-librns RNS_ROOT=/path/to/Reticulum-Go
 
 | OS | Arch | Libc / notes | Status |
 |----|------|--------------|--------|
-| Linux | x86_64 (amd64) | glibc | Supported (`make`, Docker, releases) |
+| Linux | x86_64 (amd64) | glibc | Supported (`make`) |
 | Linux | x86_64 (amd64) | musl | Compiles (`LIBC=musl`) Go cgo runtime blocked |
-| Linux | aarch64 (arm64) | glibc | Release matrix (`ubuntu-24.04-arm`) |
-| Linux | i386 | glibc | Release matrix (Zig cross) |
-| Linux | armv7 | glibc hard-float | Release matrix (Zig cross) |
-| Linux | armv6 | glibc | Experimental release matrix (Zig cross) |
-| macOS | arm64 | system | Release matrix (`macos-15`) |
-| macOS | amd64 | system | Release matrix (`macos-15-intel`) |
-| Windows | amd64 | MinGW via Zig | Zig-cross from Linux + `windows-2025` smoke |
+| Linux | aarch64 (arm64) | glibc | `make cross TARGET=linux-arm64` |
+| Linux | i386 | glibc | `make cross` (Zig cross) |
+| Linux | armv7 | glibc hard-float | `make cross` (Zig cross) |
+| Linux | armv6 | glibc | Experimental `make cross` (Zig cross) |
+| macOS | arm64 | system | `make cross TARGET=darwin-arm64` |
+| macOS | amd64 | system | `make cross TARGET=darwin-amd64` |
+| Windows | amd64 | MinGW via Zig | `make cross` Zig-cross from Linux |
 
 Config directory defaults:
 
@@ -194,7 +194,6 @@ make cross TARGET=linux-armv7 RNS_ROOT=/path/to/Reticulum-Go
 ```
 
 Set `LIBC=glibc` or `LIBC=musl` to force a library set on host Linux. Default is auto-detect.
-CI covers Ubuntu 22.04/24.04 (glibc) plus an Alpine musl compile check. Multi-OS release archives are produced on tag pushes.
 
 ## Supported Terminals
 
@@ -241,13 +240,7 @@ Optional:
 ```
 make listen LIVE_SECS=30
 man man/ren-tui.1
-make package
-make package-deb
-make package-rpm
-make package-arch
 ```
-
-Packages write to dist/pkg. Deb needs dpkg-deb, rpm needs rpmbuild, Arch zst needs tar and zstd. AUR-style builds can use packaging/PKGBUILD.
 
 ### CLI
 
@@ -328,29 +321,6 @@ Config `[client] download_dir` sets where Page `d` writes files. Empty means `~/
 Announce peers are hot-capped (256 in RAM). Overflow goes to `~/.config/ren-tui/peers.msgpack`. Network list rebuilds only on identity/name changes (not hops). TUI redraws only when dirty. Page stays isolated from the announce stream.
 
 On panic or a fatal signal, ren-tui prints a short crash banner (version, `TERM` / `COLORTERM`, hints).
-
-## Docker
-
-Debian slim (glibc) images. See [docker/README.md](docker/README.md).
-
-```
-docker build -f docker/Dockerfile -t ren-tui .
-docker run --rm -it ren-tui --version
-```
-
-Alpine musl builds exist as `docker/Dockerfile.alpine` but are not the default runtime yet (Go cgo librns crashes on musl).
-
-## CI
-
-Workflows under `.github/workflows/`. POSIX helpers live in `ci/scripts/` (curl + sha256 for Odin).
-
-| Workflow | Role |
-|----------|------|
-| `ci.yml` | Matrix tests and glibc builds on Ubuntu 22.04 / 24.04, plus Alpine musl compile check |
-| `release.yml` | Tag or manual draft-then-publish (immutable releases) |
-| `docker.yml` | Build and push the Debian slim runtime image to GHCR |
-
-Forks change pins in `.github/ci.env`. Actions are pinned to full commit SHAs.
 
 ## License
 

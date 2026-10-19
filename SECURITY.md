@@ -25,23 +25,16 @@ It is meant to run on systems and networks you trust (for example your own machi
 - There is no remote admin API and no built-in cloud sync. Risk is mainly local compromise, malicious mesh peers, and bugs in pack/unpack or UI handling of untrusted content.
 - Micron pages and announce streams are untrusted input. Treat remote content as hostile until proven otherwise.
 
-### What you download should match what we built
+### Source builds only
 
-Official release binaries are intended to be built in automation on GitHub, not by hand. Tagged releases should ship:
-
-- Linux archives for supported targets from that tag
-- Checksum files (SHA-256) for release assets when the release workflow publishes them
-
-Docker images published to GitHub Container Registry are built in CI with build provenance and an SBOM when the Docker workflow enables those options.
-
-Prefer images referenced by digest (`@sha256:...`) once you trust a given build, not only by a moving tag.
+There are no official binaries. Build from source with `make ensure-librns && make`, and pin your clone to a commit you trust (or the rngit remote listed in the README).
 
 ### Practical tips
 
-- Prefer official RNGit, GitHub Releases or GHCR digests for your copy of the app.
-- Keep `librns.so` next to portable glibc binaries when using `RUNPATH=$ORIGIN` archives.
-- Musl/Alpine builds may compile, but calling into Go cgo `librns` on musl is currently unsafe. Prefer glibc builds and the Debian-based Docker image until that is fixed upstream.
-- If something claims to be Ren TUI but does not match published checksums or verification steps, treat it as untrusted.
+- Prefer the official RNGit remote for your copy of the app.
+- Keep `librns.so` next to portable glibc binaries when using `RUNPATH=$ORIGIN` builds.
+- Musl/Alpine builds may compile, but calling into Go cgo `librns` on musl is currently unsafe. Prefer glibc builds until that is fixed upstream.
+- If something claims to be Ren TUI but is not built from source you can audit, treat it as untrusted.
 
 ---
 
@@ -58,12 +51,9 @@ Prefer images referenced by digest (`@sha256:...`) once you trust a given build,
 
 Ren TUI does not open clearnet HTTP(S) by itself for browsing or updates. Outbound reachability is through Reticulum transports you configure (TCP, and other interfaces in your Reticulum config). Peers and destinations are mesh hashes, not hardcoded internet URLs.
 
-Optional local tooling (CI scripts that fetch Odin or Go toolchains, Docker builds that pull base images) runs only in build/CI environments, not in the interactive TUI.
+Optional local tooling (the `scripts/` helpers that clone Reticulum-Go and build `librns`) runs at build time only, not in the interactive TUI.
 
 ### Build, supply chain, and transparency
 
-- CI workflows under `.github/workflows/` run tests and builds. Fork-friendly pins live in `.github/ci.env`.
-- Third-party GitHub Actions should be referenced with pinned full commit SHAs.
-- Odin compiler downloads in `ci/scripts/install-odin.sh` are fetched with `curl` and checked with `sha256sum`.
-- Docker base images are pinned by digest. See `docker/README.md`.
-- POSIX helpers live under `ci/scripts/` to keep CI logic reviewable without opaque third-party installers where practical.
+- `make ensure-librns` clones Reticulum-Go at the pinned `RNS_REF` and builds `librns` locally; override `RNS_REF` / `RNS_REPO` if you audit your own fork.
+- POSIX helpers live under `scripts/` to keep build logic reviewable without opaque third-party installers where practical.
