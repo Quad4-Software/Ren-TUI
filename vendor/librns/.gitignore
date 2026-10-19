@@ -1,3 +1,0 @@
-# Multi-arch librns outputs (built by CI / make cross). Not committed.
-lib/
-lib-musl/
